@@ -4,19 +4,75 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-# EFFICIENCY: CPU-only settings
 import os
-os.environ["OMP_NUM_THREADS"] = "4"
-os.environ["MKL_NUM_THREADS"] = "4"
+
+# -----------------------------------------------------------------------------
+# RUNTIME / PERFORMANCE DEFAULTS (auto-tuned for CPU+GPU when available)
+# -----------------------------------------------------------------------------
+_CPU_CORES = os.cpu_count() or 4
+# Threadripper 3960X = 24 cores (48 threads). For NumPy/torch this is a good default.
+DEFAULT_CPU_THREADS = min(24, _CPU_CORES)
+
+# Only set if user hasn't already configured these in their environment.
+os.environ.setdefault("OMP_NUM_THREADS", str(DEFAULT_CPU_THREADS))
+os.environ.setdefault("MKL_NUM_THREADS", str(DEFAULT_CPU_THREADS))
 
 import math
 import random
 from datetime import datetime, timezone
 
 import torch
-torch.set_num_threads(4)
 torch.set_default_dtype(torch.float32)
-DEVICE = torch.device("cpu")
+torch.set_num_threads(DEFAULT_CPU_THREADS)
+torch.set_num_interop_threads(max(1, min(4, DEFAULT_CPU_THREADS // 2)))
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if DEVICE.type == "cuda":
+    # Ampere GPU (3090 Ti): TF32 is a big speedup for matmul/conv with minimal impact for this task.
+    _use_tf32 = (os.environ.get("TSF_USE_TF32", "1") != "0")
+    if _use_tf32:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        except Exception:
+            pass
+    torch.backends.cudnn.benchmark = True
+
+USE_AMP = (DEVICE.type == "cuda" and os.environ.get("TSF_USE_AMP", "1") != "0")
+USE_TORCH_COMPILE = (os.environ.get("TSF_TORCH_COMPILE", "0") == "1")
+
+
+def _maybe_compile(model: torch.nn.Module) -> torch.nn.Module:
+    if not USE_TORCH_COMPILE:
+        return model
+    try:
+        return torch.compile(model)  # PyTorch 2.x
+    except Exception:
+        return model
+
+
+def _dataloader_kwargs(shuffle: bool, drop_last: bool = False):
+    """
+    Sensible DataLoader defaults for this workstation.
+    - Use CPU workers to overlap preprocessing/host->device transfers.
+    - Use pin_memory for faster H2D copies when using CUDA.
+    """
+    num_workers = 0
+    if DEVICE.type == "cuda":
+        # Windows multiprocessing can be heavier; keep this conservative but non-zero.
+        num_workers = min(8, max(2, DEFAULT_CPU_THREADS // 3))
+
+    kwargs = dict(
+        shuffle=bool(shuffle),
+        num_workers=int(num_workers),
+        pin_memory=(DEVICE.type == "cuda"),
+        drop_last=bool(drop_last),
+    )
+    if kwargs["num_workers"] > 0:
+        kwargs["persistent_workers"] = True
+        kwargs["prefetch_factor"] = 2
+    return kwargs
 
 TARGET_COL = "max_temperature"
 FEATURE_COLS = [
@@ -207,8 +263,9 @@ def eval_model_metrics(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, bat
     with torch.no_grad(): # disable gradients
         for i in range(0, X.shape[0], batch_size):
             # Extract batch 
-            xb = torch.from_numpy(X[i : i + batch_size]).to(DEVICE)
-            preds.append(model(xb).cpu().numpy().astype(np.float32))
+            xb = torch.from_numpy(X[i : i + batch_size])
+            xb = xb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            preds.append(model(xb).detach().cpu().numpy().astype(np.float32))
     pred = np.concatenate(preds, axis=0).astype(np.float32)
     y = y.astype(np.float32, copy=False)
     err = (pred - y).astype(np.float32)
@@ -347,8 +404,9 @@ def eval_model_mae(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, batch_s
     preds = []
     with torch.no_grad():
         for i in range(0, X.shape[0], batch_size):
-            xb = torch.from_numpy(X[i : i + batch_size]).to(DEVICE)
-            preds.append(model(xb).cpu().numpy().astype(np.float32))
+            xb = torch.from_numpy(X[i : i + batch_size])
+            xb = xb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            preds.append(model(xb).detach().cpu().numpy().astype(np.float32))
     pred = np.concatenate(preds, axis=0)
     return float(np.mean(np.abs(pred - y)))
 
@@ -534,10 +592,12 @@ def train_supervised_earlystop_target_mae(
     if X_train.shape[0] == 0:
         return model.to(DEVICE), float("nan")
 
-    model = model.to(DEVICE).float()
-    train_ds = TensorDataset(torch.from_numpy(X_train).to(DEVICE), torch.from_numpy(y_train).to(DEVICE))
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    model = _maybe_compile(model).to(DEVICE).float()
+    train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
+    train_loader = DataLoader(train_ds, batch_size=batch_size, **_dataloader_kwargs(shuffle=True, drop_last=False))
     opt = torch.optim.Adam(model.parameters(), lr=lr)
+
+    scaler = torch.cuda.amp.GradScaler(enabled=USE_AMP)
 
     best_mae, best_state, wait = float("inf"), None, 0
 
@@ -545,11 +605,15 @@ def train_supervised_earlystop_target_mae(
         model.train()
         tr_mse = 0.0
         for xb, yb in train_loader:
-            opt.zero_grad() # resetting the gradient from the previous batch. But why?? -> so on the next training iteration the gradient is get set to 0
-            pred = model(xb)
-            loss = nn.functional.mse_loss(pred, yb)
-            loss.backward() # back propagation
-            opt.step() # update weights
+            xb = xb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            yb = yb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            opt.zero_grad(set_to_none=True)
+            with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+                pred = model(xb)
+                loss = nn.functional.mse_loss(pred, yb)
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
             tr_mse += loss.item() * xb.size(0) # *** track training loss (accumulates loss accross batches)
         tr_mse /= max(1, X_train.shape[0]) # *** mean training loss per sample
 
@@ -602,18 +666,20 @@ def train_domain_adversarial_dann(
     src_bs = max(1, batch_size // 2)
     tgt_bs = max(1, batch_size // 2)
 
-    src_ds = TensorDataset(torch.from_numpy(X_src).to(DEVICE), torch.from_numpy(y_src).to(DEVICE))
-    tgt_ds = TensorDataset(torch.from_numpy(X_tgt).to(DEVICE), torch.from_numpy(y_tgt).to(DEVICE))
-    src_loader = DataLoader(src_ds, batch_size=src_bs, shuffle=True, num_workers=0, drop_last=True)
-    tgt_loader = DataLoader(tgt_ds, batch_size=tgt_bs, shuffle=True, num_workers=0, drop_last=True)
+    src_ds = TensorDataset(torch.from_numpy(X_src), torch.from_numpy(y_src))
+    tgt_ds = TensorDataset(torch.from_numpy(X_tgt), torch.from_numpy(y_tgt))
+    src_loader = DataLoader(src_ds, batch_size=src_bs, **_dataloader_kwargs(shuffle=True, drop_last=True))
+    tgt_loader = DataLoader(tgt_ds, batch_size=tgt_bs, **_dataloader_kwargs(shuffle=True, drop_last=True))
 
-    feat_extractor = feat_extractor.to(DEVICE).float()
+    feat_extractor = _maybe_compile(feat_extractor).to(DEVICE).float()
     task_head = task_head.to(DEVICE).float()
     domain_clf = domain_clf.to(DEVICE).float()
 
     params = list(feat_extractor.parameters()) + list(task_head.parameters()) + list(domain_clf.parameters())
     opt = torch.optim.Adam(params, lr=lr)
     bce = nn.BCELoss()
+
+    scaler = torch.cuda.amp.GradScaler(enabled=USE_AMP)
 
     total_steps = epochs * min(len(src_loader), len(tgt_loader))
     global_step = 0
@@ -633,6 +699,10 @@ def train_domain_adversarial_dann(
         for _ in range(n_steps):
             xs, ys = next(src_iter)
             xt, yt = next(tgt_iter)
+            xs = xs.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            ys = ys.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            xt = xt.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            yt = yt.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
             xb = torch.cat([xs, xt], dim=0)
             dom_y = torch.cat(
                 [torch.zeros(xs.size(0), device=DEVICE), torch.ones(xt.size(0), device=DEVICE)],
@@ -643,20 +713,22 @@ def train_domain_adversarial_dann(
             lambd = dann_lambda_schedule(p)
             global_step += 1
 
-            opt.zero_grad()
-            rep = feat_extractor(xb)
-            yhat = task_head(rep)
+            opt.zero_grad(set_to_none=True)
+            with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+                rep = feat_extractor(xb)
+                yhat = task_head(rep)
 
-            task_loss = nn.functional.mse_loss(yhat[: xs.size(0)], ys)
-            if use_target_task_loss:
-                task_loss = task_loss + nn.functional.mse_loss(yhat[xs.size(0) :], yt)
+                task_loss = nn.functional.mse_loss(yhat[: xs.size(0)], ys)
+                if use_target_task_loss:
+                    task_loss = task_loss + nn.functional.mse_loss(yhat[xs.size(0) :], yt)
 
-            dom_pred = domain_clf(grl(rep, lambd))
-            dom_loss = bce(dom_pred, dom_y)
+                dom_pred = domain_clf(grl(rep, lambd))
+                dom_loss = bce(dom_pred, dom_y)
 
-            loss = task_loss + (lambd * dom_loss)
-            loss.backward()
-            opt.step()
+                loss = task_loss + (lambd * dom_loss)
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
 
             tr_task += float(task_loss.item())
             tr_dom += float(dom_loss.item())
@@ -762,32 +834,39 @@ def train_eval_transformer(X_train, y_train, X_val, y_val, X_test, y_test,
     from torch.utils.data import TensorDataset, DataLoader
 
     train_ds = TensorDataset(
-        torch.from_numpy(X_train).to(DEVICE),
-        torch.from_numpy(y_train).to(DEVICE),
+        torch.from_numpy(X_train),
+        torch.from_numpy(y_train),
     )
     val_ds = TensorDataset(
-        torch.from_numpy(X_val).to(DEVICE),
-        torch.from_numpy(y_val).to(DEVICE),
+        torch.from_numpy(X_val),
+        torch.from_numpy(y_val),
     )
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, **_dataloader_kwargs(shuffle=True, drop_last=False))
+    val_loader = DataLoader(val_ds, batch_size=batch_size, **_dataloader_kwargs(shuffle=False, drop_last=False))
 
     model = VanillaTransformer(
         input_dim=X_train.shape[2], d_model=32, nhead=4, num_layers=2,
         dropout=0.1, horizon=HORIZON,
-    ).to(DEVICE)
+    )
+    model = _maybe_compile(model).to(DEVICE)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     best_val, best_state, wait = float("inf"), None, 0
+
+    scaler = torch.cuda.amp.GradScaler(enabled=USE_AMP)
 
     for ep in range(epochs):
         model.train()
         train_loss = 0.0
         for xb, yb in train_loader:
-            opt.zero_grad()
-            pred = model(xb)
-            loss = nn.functional.mse_loss(pred, yb)
-            loss.backward()
-            opt.step()
+            xb = xb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            yb = yb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            opt.zero_grad(set_to_none=True)
+            with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+                pred = model(xb)
+                loss = nn.functional.mse_loss(pred, yb)
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
             train_loss += loss.item() * xb.size(0)
         train_loss /= len(X_train)
 
@@ -796,8 +875,11 @@ def train_eval_transformer(X_train, y_train, X_val, y_val, X_test, y_test,
         if len(X_val) > 0:
             with torch.no_grad():
                 for xb, yb in val_loader:
-                    pred = model(xb)
-                    val_loss += nn.functional.mse_loss(pred, yb).item() * xb.size(0)
+                    xb = xb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+                    yb = yb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+                    with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+                        pred = model(xb)
+                        val_loss += nn.functional.mse_loss(pred, yb).item() * xb.size(0)
             val_loss /= len(X_val)
         else:
             val_loss = train_loss
@@ -818,8 +900,9 @@ def train_eval_transformer(X_train, y_train, X_val, y_val, X_test, y_test,
     model = model.to(DEVICE)
     model.eval()
     with torch.no_grad():
-        Xt = torch.from_numpy(X_test).to(DEVICE)
-        pred = model(Xt).cpu().numpy()
+        Xt = torch.from_numpy(X_test).to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+        with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+            pred = model(Xt).detach().cpu().numpy()
     mae = np.mean(np.abs(pred - y_test))
     rmse = np.sqrt(np.mean((pred - y_test) ** 2))
     return model, mae, rmse
@@ -891,36 +974,44 @@ def train_transformer_weighted(X_train, y_train, X_val, y_val, X_test, y_test, w
     """Train Transformer with weighted MSE: mean(weights * (pred - target)^2)."""
     from torch.utils.data import TensorDataset, DataLoader
 
-    w = torch.from_numpy(weights).to(DEVICE).float()
+    w = torch.from_numpy(weights).float()
     train_ds = TensorDataset(
-        torch.from_numpy(X_train).to(DEVICE),
-        torch.from_numpy(y_train).to(DEVICE),
+        torch.from_numpy(X_train),
+        torch.from_numpy(y_train),
         w[: len(X_train)].clone(),
     )
     val_ds = TensorDataset(
-        torch.from_numpy(X_val).to(DEVICE),
-        torch.from_numpy(y_val).to(DEVICE),
+        torch.from_numpy(X_val),
+        torch.from_numpy(y_val),
     )
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, **_dataloader_kwargs(shuffle=True, drop_last=False))
+    val_loader = DataLoader(val_ds, batch_size=batch_size, **_dataloader_kwargs(shuffle=False, drop_last=False))
 
     model = VanillaTransformer(
         input_dim=X_train.shape[2], d_model=32, nhead=4, num_layers=2,
         dropout=0.1, horizon=HORIZON,
-    ).to(DEVICE)
+    )
+    model = _maybe_compile(model).to(DEVICE)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     best_val, best_state, wait = float("inf"), None, 0
+
+    scaler = torch.cuda.amp.GradScaler(enabled=USE_AMP)
 
     for ep in range(epochs):
         model.train()
         train_loss = 0.0
         for xb, yb, wb in train_loader:
-            opt.zero_grad()
-            pred = model(xb)
-            sq = (pred - yb) ** 2
-            loss = (wb.unsqueeze(1) * sq).mean()
-            loss.backward()
-            opt.step()
+            xb = xb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            yb = yb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+            wb = wb.to(DEVICE, non_blocking=(DEVICE.type == "cuda")).float()
+            opt.zero_grad(set_to_none=True)
+            with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+                pred = model(xb)
+                sq = (pred - yb) ** 2
+                loss = (wb.unsqueeze(1) * sq).mean()
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
             train_loss += loss.item() * xb.size(0)
         train_loss /= len(X_train)
 
@@ -929,8 +1020,11 @@ def train_transformer_weighted(X_train, y_train, X_val, y_val, X_test, y_test, w
         if len(X_val) > 0:
             with torch.no_grad():
                 for xb, yb in val_loader:
-                    pred = model(xb)
-                    val_loss += nn.functional.mse_loss(pred, yb).item() * xb.size(0)
+                    xb = xb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+                    yb = yb.to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+                    with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+                        pred = model(xb)
+                        val_loss += nn.functional.mse_loss(pred, yb).item() * xb.size(0)
             val_loss /= len(X_val)
         else:
             val_loss = train_loss
@@ -951,8 +1045,9 @@ def train_transformer_weighted(X_train, y_train, X_val, y_val, X_test, y_test, w
     model = model.to(DEVICE)
     model.eval()
     with torch.no_grad():
-        Xt = torch.from_numpy(X_test).to(DEVICE)
-        pred = model(Xt).cpu().numpy()
+        Xt = torch.from_numpy(X_test).to(DEVICE, non_blocking=(DEVICE.type == "cuda"))
+        with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=USE_AMP):
+            pred = model(Xt).detach().cpu().numpy()
     mae = np.mean(np.abs(pred - y_test))
     return mae
 
