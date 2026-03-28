@@ -1454,7 +1454,6 @@ def main():
             vanilla_mae_runs, vanilla_mse_runs = [], []
             dann_mae_runs, dann_mse_runs = [], []
             kmm_mae_runs, kmm_mse_runs = [], []
-            ca_mae_runs, ca_mse_runs = [], []
             cadann_mae_runs, cadann_mse_runs = [], []
 
             for rep_idx in range(n_repeats):
@@ -1573,33 +1572,6 @@ def main():
                     metric_rmse=float(kmm_metrics["rmse"]),
                 )
 
-                # (d) Climate-Aware (Papua-only, supervised)
-                ca_lr = ClimateAwareTransformer(horizon=HORIZON, d_model=32, nhead=4, num_layers=2, dropout=0.1)
-                ca_lr, _ = train_supervised_earlystop_target_mae(
-                    ca_lr,
-                    X_tgt_small,
-                    y_tgt_small,
-                    X_tgt_val_lr,
-                    y_tgt_val_lr,
-                    epochs=25,
-                    batch_size=64,
-                    lr=1e-3,
-                    patience=5,
-                )
-                ca_metrics = eval_model_metrics(ca_lr, X_tgt_test_lr, y_tgt_test_lr, batch_size=256)
-                log_row(
-                    experiment="low_resource",
-                    phase="repeat",
-                    method="climate_aware",
-                    input_len=INPUT_LEN,
-                    frac_target=frac,
-                    n_target=n,
-                    rep_idx=rep_idx,
-                    seed=seed,
-                    metric_mae=float(ca_metrics["mae"]),
-                    metric_mse=float(ca_metrics["mse"]),
-                    metric_rmse=float(ca_metrics["rmse"]),
-                )
 
                 # (e) Climate-Aware + DANN (Java + small Papua)
                 ca_feat_lr = ClimateAwareRep(d_model=32, nhead=4, num_layers=2, dropout=0.1)
@@ -1643,8 +1615,6 @@ def main():
                 dann_mse_runs.append(float(dann_metrics["mse"]))
                 kmm_mae_runs.append(float(kmm_metrics["mae"]))
                 kmm_mse_runs.append(float(kmm_metrics["mse"]))
-                ca_mae_runs.append(float(ca_metrics["mae"]))
-                ca_mse_runs.append(float(ca_metrics["mse"]))
                 cadann_mae_runs.append(float(cadann_metrics["mae"]))
                 cadann_mse_runs.append(float(cadann_metrics["mse"]))
 
@@ -1654,20 +1624,16 @@ def main():
             dann_mse_runs = np.asarray(dann_mse_runs, dtype=np.float64)
             kmm_mae_runs = np.asarray(kmm_mae_runs, dtype=np.float64)
             kmm_mse_runs = np.asarray(kmm_mse_runs, dtype=np.float64)
-            ca_mae_runs = np.asarray(ca_mae_runs, dtype=np.float64)
-            ca_mse_runs = np.asarray(ca_mse_runs, dtype=np.float64)
             cadann_mae_runs = np.asarray(cadann_mae_runs, dtype=np.float64)
             cadann_mse_runs = np.asarray(cadann_mse_runs, dtype=np.float64)
 
             v_mae_mean, v_mae_std = float(np.mean(vanilla_mae_runs)), float(np.std(vanilla_mae_runs, ddof=1))
             d_mae_mean, d_mae_std = float(np.mean(dann_mae_runs)), float(np.std(dann_mae_runs, ddof=1))
             k_mae_mean, k_mae_std = float(np.mean(kmm_mae_runs)), float(np.std(kmm_mae_runs, ddof=1))
-            c_mae_mean, c_mae_std = float(np.mean(ca_mae_runs)), float(np.std(ca_mae_runs, ddof=1))
             cd_mae_mean, cd_mae_std = float(np.mean(cadann_mae_runs)), float(np.std(cadann_mae_runs, ddof=1))
             v_mse_mean, v_mse_std = float(np.mean(vanilla_mse_runs)), float(np.std(vanilla_mse_runs, ddof=1))
             d_mse_mean, d_mse_std = float(np.mean(dann_mse_runs)), float(np.std(dann_mse_runs, ddof=1))
             k_mse_mean, k_mse_std = float(np.mean(kmm_mse_runs)), float(np.std(kmm_mse_runs, ddof=1))
-            c_mse_mean, c_mse_std = float(np.mean(ca_mse_runs)), float(np.std(ca_mse_runs, ddof=1))
             cd_mse_mean, cd_mse_std = float(np.mean(cadann_mse_runs)), float(np.std(cadann_mse_runs, ddof=1))
             delta_mae_mean = float(np.mean(vanilla_mae_runs - dann_mae_runs))
             delta_mse_mean = float(np.mean(vanilla_mse_runs - dann_mse_runs))
@@ -1694,8 +1660,6 @@ def main():
                 "dann_mae_std": d_mae_std,
                 "kmm_mae_mean": k_mae_mean,
                 "kmm_mae_std": k_mae_std,
-                "climate_aware_mae_mean": c_mae_mean,
-                "climate_aware_mae_std": c_mae_std,
                 "climate_aware_dann_mae_mean": cd_mae_mean,
                 "climate_aware_dann_mae_std": cd_mae_std,
                 "vanilla_mse_mean": v_mse_mean,
@@ -1704,8 +1668,6 @@ def main():
                 "dann_mse_std": d_mse_std,
                 "kmm_mse_mean": k_mse_mean,
                 "kmm_mse_std": k_mse_std,
-                "climate_aware_mse_mean": c_mse_mean,
-                "climate_aware_mse_std": c_mse_std,
                 "climate_aware_dann_mse_mean": cd_mse_mean,
                 "climate_aware_dann_mse_std": cd_mse_std,
                 "delta_mae_mean": delta_mae_mean,
@@ -1733,10 +1695,6 @@ def main():
                 kmm_mae_std=k_mae_std,
                 kmm_mse_mean=k_mse_mean,
                 kmm_mse_std=k_mse_std,
-                climate_aware_mae_mean=c_mae_mean,
-                climate_aware_mae_std=c_mae_std,
-                climate_aware_mse_mean=c_mse_mean,
-                climate_aware_mse_std=c_mse_std,
                 climate_aware_dann_mae_mean=cd_mae_mean,
                 climate_aware_dann_mae_std=cd_mae_std,
                 climate_aware_dann_mse_mean=cd_mse_mean,
@@ -1752,7 +1710,6 @@ def main():
                 f"Vanilla MAE={v_mae_mean:.4f}±{v_mae_std:.4f}  "
                 f"DANN MAE={d_mae_mean:.4f}±{d_mae_std:.4f}  "
                 f"KMM MAE={k_mae_mean:.4f}±{k_mae_std:.4f}  "
-                f"CA MAE={c_mae_mean:.4f}±{c_mae_std:.4f}  "
                 f"CA+DANN MAE={cd_mae_mean:.4f}±{cd_mae_std:.4f}  "
                 f"Δ(V-DANN)={delta_mae_mean:+.4f}"
                 + (
@@ -1777,7 +1734,6 @@ def main():
                     f"{r['vanilla_mae_mean']:>7.4f}±{r['vanilla_mae_std']:<7.4f}   "
                     f"{r['dann_mae_mean']:>7.4f}±{r['dann_mae_std']:<7.4f}   "
                     f"{r['kmm_mae_mean']:>7.4f}±{r['kmm_mae_std']:<7.4f}   "
-                    f"{r['climate_aware_mae_mean']:>7.4f}±{r['climate_aware_mae_std']:<7.4f}   "
                     f"{r['climate_aware_dann_mae_mean']:>7.4f}±{r['climate_aware_dann_mae_std']:<7.4f}   "
                     f"{pv_mae_txt:>10s}"
                 )
@@ -1788,13 +1744,11 @@ def main():
                 mv = [frac_results[fr]["vanilla_mae_mean"] for fr in low_resource_fracs if fr in frac_results]
                 md = [frac_results[fr]["dann_mae_mean"] for fr in low_resource_fracs if fr in frac_results]
                 mk = [frac_results[fr]["kmm_mae_mean"] for fr in low_resource_fracs if fr in frac_results]
-                mc = [frac_results[fr]["climate_aware_mae_mean"] for fr in low_resource_fracs if fr in frac_results]
                 mcd = [frac_results[fr]["climate_aware_dann_mae_mean"] for fr in low_resource_fracs if fr in frac_results]
                 plt.figure(figsize=(8, 4))
                 plt.plot(xs, mv, marker="o", label="Vanilla (Papua)")
                 plt.plot(xs, md, marker="o", label="DANN (Java→Papua)")
                 plt.plot(xs, mk, marker="o", label="KMM (Java→Papua)")
-                plt.plot(xs, mc, marker="o", label="Climate-Aware (Papua)")
                 plt.plot(xs, mcd, marker="o", label="Climate-Aware + DANN")
                 plt.xlabel("% target (Papua) train windows")
                 plt.ylabel("Papua Test MAE (mean over repeats)")
@@ -1821,12 +1775,12 @@ def main():
     print(
         "Single Station    | "
         f"{_fmt(res_single['arima']['mae'])} | {_fmt(res_single['vanilla']['mae'])} | {_fmt(res_single['dann']['mae'])} | "
-        f"{_fmt(res_single['kmm']['mae'])} | {_fmt(res_single['climate_aware']['mae'])} | {_fmt(res_single['climate_aware_dann']['mae'])}"
+        f"{_fmt(res_single['kmm']['mae'])} | {_fmt(res_single['climate_aware_dann']['mae'])}"
     )
     print(
         "Three Stations    | "
         f"{_fmt(res_three['arima']['mae'])} | {_fmt(res_three['vanilla']['mae'])} | {_fmt(res_three['dann']['mae'])} | "
-        f"{_fmt(res_three['kmm']['mae'])} | {_fmt(res_three['climate_aware']['mae'])} | {_fmt(res_three['climate_aware_dann']['mae'])}"
+        f"{_fmt(res_three['kmm']['mae'])}  | {_fmt(res_three['climate_aware_dann']['mae'])}"
     )
     print("-" * 75)
     # Also report MSE summary (same experiments)
@@ -1836,12 +1790,12 @@ def main():
     print(
         "Single Station    | "
         f"{res_single['arima']['mse']:13.6f} | {res_single['vanilla']['mse']:13.6f} | {res_single['dann']['mse']:13.6f} | "
-        f"{res_single['kmm']['mse']:13.6f} | {res_single['climate_aware']['mse']:13.6f} | {res_single['climate_aware_dann']['mse']:13.6f}"
+        f"{res_single['kmm']['mse']:13.6f}  | {res_single['climate_aware_dann']['mse']:13.6f}"
     )
     print(
         "Three Stations    | "
         f"{res_three['arima']['mse']:13.6f} | {res_three['vanilla']['mse']:13.6f} | {res_three['dann']['mse']:13.6f} | "
-        f"{res_three['kmm']['mse']:13.6f} | {res_three['climate_aware']['mse']:13.6f} | {res_three['climate_aware_dann']['mse']:13.6f}"
+        f"{res_three['kmm']['mse']:13.6f} | {res_three['climate_aware_dann']['mse']:13.6f}"
     )
     print("-" * 60)
     print("-------------------------------------------")
