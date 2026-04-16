@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 import torch
 
-from arima_baseline import arima_baseline_rolling
+from training.arima_baseline import arima_baseline_rolling
 
 torch.set_default_dtype(torch.float32)
 torch.set_num_threads(DEFAULT_CPU_THREADS)
@@ -557,7 +557,7 @@ def enso_extreme_mask(X: np.ndarray, thresh_abs_nino: float = 1.0) -> np.ndarray
     return (m >= float(thresh_abs_nino))
 
 
-from arima_baseline import selet_arima_order
+from training.arima_baseline import selet_arima_order
 
 
 def selet_arima_order(series):
@@ -565,7 +565,7 @@ def selet_arima_order(series):
     Backwards-compat wrapper kept for any legacy callers inside this
     module. The implementation now lives in `arima_baseline`.
     """
-    from arima_baseline import selet_arima_order as _selet_arima_order
+    from training.arima_baseline import selet_arima_order as _selet_arima_order
 
     return _selet_arima_order(series)
 
