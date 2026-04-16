@@ -31,6 +31,10 @@ torch.set_num_threads(DEFAULT_CPU_THREADS)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+from src.training.arima_baseline import arima_baseline_rolling 
+
+
 if DEVICE.type == "cuda":
     # Ampere GPU (3090 Ti): TF32 is a big speedup for matmul/conv with minimal impact for this task.
     try:
@@ -54,7 +58,8 @@ def arima_one_three_stations_exp(
     train_papua_sel = tsa.filter_df_by_station_ids(train_papua_df, target_station_ids)
     test_papua_sel = tsa.filter_df_by_station_ids(test_papua_df, target_station_ids)
 
-    arima_papua_mae, arima_papua_rmse = tsa.arima_baseline_rolling(test_papua_sel,train_papua_sel)
+    # arima_papua_mae, arima_papua_rmse = tsa.arima_baseline_rolling(test_papua_sel,train_papua_sel)
+    arima_papua_mae, arima_papua_rmse = arima_baseline_rolling(test_papua_sel,train_papua_sel)
     arima_papua_mse = float(arima_papua_rmse ** 2)
     return arima_papua_mae, arima_papua_rmse, arima_papua_mse
 

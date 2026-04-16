@@ -1,0 +1,7 @@
+epochs: 100
+batch_size: 256
+lr: 0.0001
+
+use_early_stop: false
+use_amp: true
+use_compile: false

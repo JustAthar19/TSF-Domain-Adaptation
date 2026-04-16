@@ -1,21 +1,21 @@
 import numpy as np
+import pandas as pd
 from joblib import Parallel, delayed
 
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.stattools import adfuller
 
-TARGET_COL = "max_temperature"
 
-
-def run_station_arima(lid, train_df, test_df, horizon: int = 7):
+def run_station_arima(lid, train_df: pd.DataFrame, test_df: pd.DataFrame, config: dict,horizon: int = 7  ):
     """
     Fit an ARIMA model per station and compute rolling forecasts
     over the test horizon. This module is intentionally torch-free
     so it can be used safely from multiprocessing workers.
     """
-    from statsmodels.tsa.arima.model import ARIMA
 
     train_ser = (
         train_df[train_df["location_id"] == lid]
-        .sort_values("time")[TARGET_COL]
+        .sort_values("time")[config["target_col"]]
     )
     test_grp = (
         test_df[test_df["location_id"] == lid]
@@ -26,7 +26,8 @@ def run_station_arima(lid, train_df, test_df, horizon: int = 7):
         return None
 
     train_ser = train_ser.values.astype(np.float64)
-    test_vals = test_grp[TARGET_COL].values.astype(np.float32)
+    test_vals = test_grp[config["target_col"]].values.astype(np.float32)
+    # test_vals = test_grp["max_temperature"].values.astype(np.float32)
 
     order = selet_arima_order(train_ser)
 
@@ -62,7 +63,7 @@ def run_station_arima(lid, train_df, test_df, horizon: int = 7):
     return mae, rmse
 
 
-def arima_baseline_rolling(test_df, train_df, horizon: int = 7):
+def arima_baseline_rolling(test_df, train_df, config, horizon: int = 7):
     """
     Compute ARIMA rolling baseline across all stations in the test
     DataFrame using joblib-based parallelization. Only this module
@@ -73,7 +74,7 @@ def arima_baseline_rolling(test_df, train_df, horizon: int = 7):
     locations = test_df["location_id"].unique()
 
     results = Parallel(n_jobs=-1)(
-        delayed(run_station_arima)(lid, train_df, test_df, horizon)
+        delayed(run_station_arima)(lid, train_df, test_df, config, horizon)
         for lid in locations
     )
 
@@ -89,16 +90,16 @@ def arima_baseline_rolling(test_df, train_df, horizon: int = 7):
     if not all_mae:
         return float("nan"), float("nan")
 
-    return np.mean(all_mae), np.mean(all_rmse)
+    mae, rmse = float(np.mean(all_mae)), float(np.mean(all_rmse))
+    mse = float(rmse ** 2)
+
+    return {"mae": mae, "mse": mse, "rmse": rmse}
 
 
 def selet_arima_order(series):
     """
     Simple (p, d, q) search for ARIMA order based on AIC.
     """
-    from statsmodels.tsa.arima.model import ARIMA
-    from statsmodels.tsa.stattools import adfuller
-
     series = np.array(series, dtype=np.float64)
 
     # determine differencing

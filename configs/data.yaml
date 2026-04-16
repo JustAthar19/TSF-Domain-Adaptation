@@ -1,0 +1,35 @@
+# configs/data.yaml
+
+target_col: max_temperature
+
+feature_cols:
+  - max_temperature
+  - latitude
+  - longitude
+  - elevation
+  - sin_doy
+  - cos_doy
+  - solar_declination
+  - dmi east
+  - nino anom 3.4
+
+input_len: 14
+horizon: 7
+stride: 2
+
+device: cuda
+
+local_temporal_cols:
+  - max_temperature
+  - sin_doy
+  - cos_doy
+  - solar_declination
+
+geo_cols:
+  - latitude
+  - longitude
+  - elevation
+
+climate_cols:
+  - nino anom 3.4
+  - dmi east
