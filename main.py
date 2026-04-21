@@ -13,6 +13,7 @@ from src.utils.runtime import setup_runtime
 from src.utils.results import print_summary_table
 
 from src.utils.io import save_to_csv
+from src.utils.time import convert_seconds
 
 def main():
     
@@ -20,7 +21,7 @@ def main():
     run_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # device = setup_runtime()
     # dataloader_kwargs = get_dataloader_kwargs()
-
+    training_start_time = datetime.now()
     set_seed(42)
 
    
@@ -95,6 +96,8 @@ def main():
 
     print_summary_table(res_single, res_three)
 
+    training_end_time = convert_seconds((datetime.now() - training_start_time).total_seconds())
+    print(f"Training ARIMA took: {training_end_time}")
 
     save_to_csv(run_ts=run_ts,results_rows=results_rows)
 
