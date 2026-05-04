@@ -2,14 +2,14 @@ import pandas as pd
 import os
 from datetime import datetime
 
-def log_row(experiment_name, result_rows,run_ts, config, **kwargs):
+def log_row(experiment_name, result_rows,run_ts, input_len, horizon, stride, feature_cols, **kwargs):
     row = {
             "experiment": experiment_name,
             "run_timestamp": run_ts,
-            "INPUT_LEN": config["input_len"],
-            "HORIZON": config["horizon"],
-            "STRIDE": config["stride"],
-            "n_features": len(config["feature_cols"]),
+            "INPUT_LEN": input_len,
+            "HORIZON": horizon,
+            "STRIDE": stride,
+            "n_features": len(feature_cols),
     }
     row.update(kwargs)
     result_rows.append(row)

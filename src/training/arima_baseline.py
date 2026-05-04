@@ -6,7 +6,7 @@ from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
 
 
-def run_station_arima(lid, train_df: pd.DataFrame, test_df: pd.DataFrame, config: dict,horizon: int = 7  ):
+def run_station_arima(lid, train_df: pd.DataFrame, test_df: pd.DataFrame, target_col: str, horizon: int):
     """
     Fit an ARIMA model per station and compute rolling forecasts
     over the test horizon. This module is intentionally torch-free
@@ -15,7 +15,7 @@ def run_station_arima(lid, train_df: pd.DataFrame, test_df: pd.DataFrame, config
 
     train_ser = (
         train_df[train_df["location_id"] == lid]
-        .sort_values("time")[config["target_col"]]
+        .sort_values("time")[target_col]
     )
     test_grp = (
         test_df[test_df["location_id"] == lid]
@@ -26,9 +26,8 @@ def run_station_arima(lid, train_df: pd.DataFrame, test_df: pd.DataFrame, config
         return None
 
     train_ser = train_ser.values.astype(np.float64)
-    test_vals = test_grp[config["target_col"]].values.astype(np.float32)
-    # test_vals = test_grp["max_temperature"].values.astype(np.float32)
-
+    test_vals = test_grp[target_col].values.astype(np.float32)
+    
     order = selet_arima_order(train_ser)
 
     preds = []
@@ -63,7 +62,7 @@ def run_station_arima(lid, train_df: pd.DataFrame, test_df: pd.DataFrame, config
     return mae, rmse
 
 
-def arima_baseline_rolling(test_df, train_df, config, horizon: int = 7):
+def arima_baseline_rolling(test_df: pd.DataFrame, train_df: pd.DataFrame, target_col: str, horizon: int):
     """
     Compute ARIMA rolling baseline across all stations in the test
     DataFrame using joblib-based parallelization. Only this module
@@ -72,9 +71,10 @@ def arima_baseline_rolling(test_df, train_df, config, horizon: int = 7):
     """
     test_df = test_df.sort_values(["location_id", "time"])
     locations = test_df["location_id"].unique()
+    horizon = horizon
 
     results = Parallel(n_jobs=-1)(
-        delayed(run_station_arima)(lid, train_df, test_df, config, horizon)
+        delayed(run_station_arima)(lid, train_df, test_df, target_col, horizon)
         for lid in locations
     )
 

@@ -11,15 +11,15 @@ from src.evaluation.kmm_vu_tran import eval_kmm_vu_tran_mae, eval_model_kmm_vu_t
 
 def train_transformer_non_da(
     model: nn.Module,
-    X_source: pd.DataFrame, 
-    y_source: pd.DataFrame,          # Source domain (Java)
+    X_target: pd.DataFrame, 
+    y_target: pd.DataFrame,          # Source domain (Java)
     X_val: pd.DataFrame,
     y_val: pd.DataFrame,
-    config:dict,     # Target validation (Papua)
-    epochs: int=100,
-    batch_size: int = 256,
-    lr: float = 1e-3,
-    device="cuda"
+    input_len: int,
+    epochs: int,
+    batch_size: int,
+    lr: float,
+    device: str
 ):
     """
     Train Transformer with KMM-based domain adaptation.
@@ -28,22 +28,19 @@ def train_transformer_non_da(
     y_source: (N, horizon)
     beta:     (N,) KMM weights
     """
-
     model.to(device)
 
     # Convert to tensors
-    X_source = torch.from_numpy(X_source).float()
-    y_source = torch.from_numpy(y_source).float()
-    # beta = torch.from_numpy(beta).float()
+    X_target = torch.from_numpy(X_target).float()
+    y_target = torch.from_numpy(y_target).float()
 
-    # If provided, convert validation arrays once (we will run the same
-    # TemperatureTransformer slicing logic during validation).
+    
     if X_val is not None and y_val is not None:
         X_val = torch.from_numpy(X_val).float()
         y_val = torch.from_numpy(y_val).float()
 
-    train_ds = TensorDataset(X_source, y_source)
-    train_loader = DataLoader(train_ds, batch_size=256,  num_workers=0)
+    train_ds = TensorDataset(X_target, y_target)
+    train_loader = DataLoader(train_ds, batch_size=batch_size,  num_workers=0)
  
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -60,9 +57,9 @@ def train_transformer_non_da(
 
             optimizer.zero_grad()
 
-            z_past = xb[:, :config['input_len'], :1]
-            x_cov_past = xb[:, :config['input_len'], 1:]
-            x_cov_future = xb[:, config['input_len']:, 1:]
+            z_past = xb[:, :input_len, :1]
+            x_cov_past = xb[:, :input_len, 1:]
+            x_cov_future = xb[:, input_len:, 1:]
 
             forecast, _ = model(z_past, x_cov_past, x_cov_future)
             preds = forecast.squeeze(-1)
@@ -77,7 +74,7 @@ def train_transformer_non_da(
 
         avg_loss = total_loss / len(train_loader)
 
-        val_mae = eval_kmm_vu_tran_mae(model, X_val, y_val, config,batch_size)
+        val_mae = eval_kmm_vu_tran_mae(model, X_val, y_val, input_len, batch_size, device)
 
         print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val MAE: {val_mae:.4f}")
         
@@ -97,11 +94,11 @@ def train_transformer_da(
     beta: np.ndarray,                        # KMM weights (same length as X_source)
     X_val: pd.DataFrame,
     y_val: pd.DataFrame,
-    config: dict,
-    epochs: int = 100,
-    batch_size: int = 256,
-    lr: float = 1e-3,
-    device="cuda"
+    input_len: int,
+    epochs: int,
+    batch_size: int,
+    lr: float,
+    device: str
 ):
     """
     Train Transformer with KMM-based domain adaptation.
@@ -126,7 +123,7 @@ def train_transformer_da(
 
     # Dataset includes weights
     train_ds = TensorDataset(X_source, y_source, beta)
-    train_loader = DataLoader(train_ds, batch_size=256,  num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=batch_size,  num_workers=0)
     # train_loader = DataLoader(train_ds, batch_size=256,  **_dataloader_kwargs(shuffle=True, drop_last=False))
 
 # 
@@ -151,9 +148,9 @@ def train_transformer_da(
             #   xb[:, :INPUT_LEN, :1]   -> z_past
             #   xb[:, :INPUT_LEN, 1:]   -> x_cov_past
             #   xb[:, INPUT_LEN:, 1:]   -> x_cov_future
-            z_past = xb[:, :config['input_len'], :1]
-            x_cov_past = xb[:, :config['input_len'], 1:]
-            x_cov_future = xb[:, config['input_len']:, 1:]
+            z_past = xb[:, :input_len, :1]
+            x_cov_past = xb[:, :input_len, 1:]
+            x_cov_future = xb[:, input_len:, 1:]
 
             forecast, _recon = model(z_past, x_cov_past, x_cov_future)
             preds = forecast.squeeze(-1)  # (B, H)
@@ -174,7 +171,7 @@ def train_transformer_da(
 
         avg_loss = total_loss / len(train_loader)
         
-        val_mae = eval_kmm_vu_tran_mae(model, X_val, y_val, config, batch_size)
+        val_mae = eval_kmm_vu_tran_mae(model, X_val, y_val, input_len, batch_size, device)
         print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss (Target): {val_mae:.4f}")    
         if best_val_mae < val_mae:
             best_val_mae = val_mae

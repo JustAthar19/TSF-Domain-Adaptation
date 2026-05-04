@@ -26,3 +26,12 @@ def load_and_split(data_path: str):
 ## Create a boolean fileter to keep only the true rows getting returned
 def region_mask(df:pd.DataFrame, region_name: str):
     return df["region"].astype(str).str.strip().str.lower() == region_name.strip().lower()
+
+def split_domain(train_df: pd.DataFrame, val_df: pd.DataFrame, test_df: pd.DataFrame, source_domain: str, target_domain: str):
+    source_train_df = train_df[region_mask(train_df, source_domain)]
+    target_train_df = train_df[region_mask(train_df, target_domain)]
+    target_val_df = val_df[region_mask(val_df, target_domain)]
+    target_test_df = test_df[region_mask(test_df, target_domain)]
+
+    return source_train_df, target_train_df, target_val_df, target_test_df
+

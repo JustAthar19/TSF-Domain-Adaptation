@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-def attf_eval_model_mae(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, config: dict,batch_size: int = 256) -> float:
+def attf_eval_model_mae(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, batch_size: int, device: str) -> float:
     if X.shape[0] == 0:
         return float("nan")
     model.eval()
@@ -9,7 +9,7 @@ def attf_eval_model_mae(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, co
     with torch.no_grad():
         for i in range(0, X.shape[0], batch_size):
             xb = torch.from_numpy(X[i : i + batch_size])
-            xb = xb.to(config["device"], non_blocking=(config["device"] == "cuda"))
+            xb = xb.to(device, non_blocking=(device == "cuda"))
             pred, _ = model(xb)
             # pred = pred[:, -1, :]
             # pred = pred[:, :y.shape[1], 0]
@@ -18,7 +18,7 @@ def attf_eval_model_mae(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, co
     return float(np.mean(np.abs(pred - y)))
 
 
-def attf_eval_model_metrics(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, config: dict,batch_size: int = 256):
+def attf_eval_model_metrics(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, batch_size: int, device: str):
     if X.shape[0] == 0:
         return {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")}
     model.eval() # switch model into evaluation mode
@@ -27,7 +27,7 @@ def attf_eval_model_metrics(model: torch.nn.Module, X: np.ndarray, y: np.ndarray
         for i in range(0, X.shape[0], batch_size):
             # Extract batch 
             xb = torch.from_numpy(X[i : i + batch_size])
-            xb = xb.to(config["device"], non_blocking=(config["device"] == "cuda"))
+            xb = xb.to(device, non_blocking=(device == "cuda"))
             pred, _ = model(xb)            
             preds.append(pred.detach().cpu().numpy().astype(np.float32))
     pred = np.concatenate(preds, axis=0).astype(np.float32)

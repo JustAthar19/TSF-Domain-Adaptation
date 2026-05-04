@@ -3,26 +3,26 @@ import torch.nn as nn
 import pandas as pd
 import numpy as np
 
-def eval_tft_mae_da(model: nn.Module, X: pd.DataFrame, y: pd.DataFrame, config: dict, batch_size=256):
+def eval_tft_mae_da(model: nn.Module, X: pd.DataFrame, y: pd.DataFrame, batch_size: int, device: str):
     model.eval()
     preds = []
 
     with torch.no_grad():
         for i in range(0, len(X), batch_size):
-            xb = torch.from_numpy(X[i:i+batch_size]).to(config['device'])
+            xb = torch.from_numpy(X[i:i+batch_size]).to(device)
             yhat, _, _, _ = model(xb, lambda_grl=0.0)
             preds.append(yhat.cpu())
 
     preds = torch.cat(preds, dim=0)
     return torch.mean(torch.abs(preds - torch.from_numpy(y))).item()
 
-def tft_eval_model_metrics_da(model: nn.Module, X: pd.DataFrame, y: pd.DataFrame, config: dict, batch_size=256):
+def tft_eval_model_metrics_da(model: nn.Module, X: pd.DataFrame, y: pd.DataFrame, batch_size: int, device: str):
     model.eval()
     preds = []
 
     with torch.no_grad():
         for i in range(0, len(X), batch_size):
-            xb = torch.from_numpy(X[i:i+batch_size]).to(config['device'])
+            xb = torch.from_numpy(X[i:i+batch_size]).to(device)
             yhat, _, _, _ = model(xb, lambda_grl=0.0)
             preds.append(yhat.cpu())
 
@@ -36,21 +36,20 @@ def tft_eval_model_metrics_da(model: nn.Module, X: pd.DataFrame, y: pd.DataFrame
     return {"mae": mae, "mse": mse, "rmse": rmse}
 
 
-def eval_tft_mae_non_da(model: nn.Module, X: pd.DataFrame, y: pd.DataFrame, config: dict, batch_size=256):
+def eval_tft_mae_non_da(model: nn.Module, X: pd.DataFrame, y: pd.DataFrame, batch_size: int, device: str):
     model.eval()
     preds = []
 
     with torch.no_grad():
         for i in range(0, len(X), batch_size):
-            xb = torch.from_numpy(X[i:i+batch_size]).to(config['device'])
+            xb = torch.from_numpy(X[i:i+batch_size]).to(device)
             yhat, _, _ = model(xb)
             preds.append(yhat.cpu())
 
     preds = torch.cat(preds, dim=0)
     return torch.mean(torch.abs(preds - torch.from_numpy(y))).item()
 
-def tft_eval_model_metrics_non_da(model: torch.nn.Module,X: np.ndarray, y: np.ndarray, config: dict, batch_size: int = 256
-):
+def tft_eval_model_metrics_non_da(model: torch.nn.Module, X: np.ndarray, y: np.ndarray, batch_size: int, device: str):
     """
     Evaluate model on test data and return MAE, MSE, RMSE
     """
@@ -64,7 +63,7 @@ def tft_eval_model_metrics_non_da(model: torch.nn.Module,X: np.ndarray, y: np.nd
     with torch.no_grad():
         for i in range(0, X.shape[0], batch_size):
             xb = torch.from_numpy(X[i : i + batch_size]).float()
-            xb = xb.to(config['device'], non_blocking=(config['device'] == "cuda"))
+            xb = xb.to(device, non_blocking=(device == "cuda"))
 
             out, _ ,_ = model(xb) 
             preds.append(out.cpu().numpy())

@@ -1,5 +1,12 @@
 # configs/data.yaml
 
+input_len: 14
+horizon: 7
+stride: 2
+
+source_domain: java
+target_domain: papua
+
 target_col: max_temperature
 
 feature_cols:
@@ -12,12 +19,6 @@ feature_cols:
   - solar_declination
   - dmi east
   - nino anom 3.4
-
-input_len: 14
-horizon: 7
-stride: 2
-
-device: cuda
 
 local_temporal_cols:
   - max_temperature
