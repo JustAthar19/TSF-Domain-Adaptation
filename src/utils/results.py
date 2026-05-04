@@ -3,6 +3,8 @@ import numpy as np
 def _fmt(x):
     return f"{x:7.3f}" if (x is not None and not np.isnan(x)) else " nan"
 
+def fmt(mean, std, width=7, precision=4):
+    return f"{mean:>{width}.{precision}f}±{std:<{width}.{precision}f}"
 
 def print_summary_table(res_single: dict, res_three: dict):
     print("\nSpatial Scarcity Summary Table (Papua test MAE)")

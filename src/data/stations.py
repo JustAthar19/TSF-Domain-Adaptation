@@ -2,18 +2,16 @@ import pandas as pd
 import numpy as np
 
 
-def compute_station_stats(papua_train: pd.DataFrame, config: dict):
-    if papua_train is None or len(papua_train) == 0:
-        return pd.DataFrame(columns=["location_id", "mean_temp", "std_temp", "elevation", "n_rows"])
-    df = papua_train.copy()
+def compute_station_stats(target_train_df: pd.DataFrame, target_col: str):
+    df = target_train_df.copy()
     df['location_id'] = df['location_id'].astype(str)
     g = df.groupby("location_id", dropna=False)
     
     stats = g.agg(
-        mean_temp=(config["target_col"], "mean"),
-        std_temp=(config["target_col"], "std"),
+        mean_temp=(target_col, "mean"),
+        std_temp=(target_col, "std"),
         elevation=("elevation", "mean"),
-        n_rows=(config["target_col"], "size"),
+        n_rows=(target_col, "size"),
     ).reset_index()
     
     stats["mean_temp"] = stats["mean_temp"].astype(np.float32)
@@ -22,14 +20,14 @@ def compute_station_stats(papua_train: pd.DataFrame, config: dict):
     stats["n_rows"] = stats["n_rows"].astype(int)
     return stats
 
-def select_target_stations_papua_by_elevation(papua_train: pd.DataFrame, config: dict):
+def select_target_stations_papua_by_elevation(papua_train: pd.DataFrame, target_col: str):
     """
     Select station IDs from Papua training set by elevation:
       - Single station: median elevation station
       - Three stations: lowest, median, highest elevation stations
     Returns (single_station_id: str, three_station_ids: list[str], stats_sorted: pd.DataFrame).
     """
-    stats = compute_station_stats(papua_train, config)
+    stats = compute_station_stats(papua_train, target_col)
     if len(stats) == 0:
         return None, [], stats
 

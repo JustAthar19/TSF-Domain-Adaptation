@@ -1,41 +1,32 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import TensorDataset, DataLoader
 
-import pandas as pd
 import numpy as np
 
 from src.evaluation.tft import eval_tft_mae_da, eval_tft_mae_non_da
-
 from src.models.TFT.gradient_reversal_layer import dann_lambda_schedule
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-
-def train_tft_target(
+def train_tft_non_da(
     model: nn.Module,
     X_tgt: np.ndarray,
     y_tgt: np.ndarray,
     X_tgt_val: np.ndarray,
     y_tgt_val: np.ndarray,
-    config: dict,
-    epochs: int = 100,
-    batch_size: int = 256,
-    lr: float = 1e-3,
-    patience: int = 5,
+    epochs: int,
+    batch_size: int,
+    lr: float,
+    device: str
     
 ):
-    from torch.utils.data import TensorDataset, DataLoader
 
     if X_tgt.shape[0] == 0:
         return None, float("nan")
 
-    # ✅ Single dataset (target only)
     tgt_ds = TensorDataset(
-        torch.from_numpy(X_tgt).to(config['device']),
-        torch.from_numpy(y_tgt).to(config['device'])
+        torch.from_numpy(X_tgt).to(device),
+        torch.from_numpy(y_tgt).to(device)
     )
 
     tgt_loader = DataLoader(
@@ -45,7 +36,7 @@ def train_tft_target(
         drop_last=True
     )
 
-    model = model.to(config['device']).float()
+    model = model.to(device).float()
     opt = torch.optim.Adam(model.parameters(), lr=lr)
 
     best_mae, best_state, wait = float("inf"), None, 0
@@ -59,7 +50,7 @@ def train_tft_target(
         for xb, yb in tgt_loader:
             opt.zero_grad()
 
-            # 🔥 Forward (no GRL, no domain output)
+
             yhat, _, _ = model(xb)
 
             loss = F.mse_loss(yhat, yb)
@@ -71,81 +62,18 @@ def train_tft_target(
 
         tr_loss /= max(1, n_steps)
 
-        # ✅ Validation on target
-        val_mae = eval_tft_mae_non_da(model, X_tgt_val, y_tgt_val, config, batch_size=256)
+        val_mae = eval_tft_mae_non_da(model, X_tgt_val, y_tgt_val, batch_size, device)
 
         print(f"Epoch {ep+1}/{epochs} | Train Loss: {tr_loss:.6f} | Val MAE: {val_mae:.4f}")
 
-        # ✅ Early stopping (you had it commented before)
         if val_mae < best_mae:
             best_mae = val_mae
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-            wait = 0
-        else:
-            wait += 1
-            if wait >= patience:
-                print(f"Early stopping at epoch {ep+1}")
-                break
 
     if best_state is not None:
         model.load_state_dict(best_state)
 
     return model, best_mae
-
-# def train_tft(
-#     model: nn.Module,
-#     X_train: pd.DataFrame,
-#     y_train: pd.DataFrame,
-#     X_val: pd.DataFrame,
-#     y_val: pd.DataFrame,
-#     config: dict,
-#     epochs=100,
-#     batch_size=256,
-#     lr=1e-3,
-#     patience=5,
-#     device='cuda'
-# ):
-#     model = model.to(device)
-
-#     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-#     criterion = nn.MSELoss()
-
-#     best_val = float("inf")
-
-#     for epoch in range(epochs):
-#         model.train()
-#         perm = np.random.permutation(len(X_train))
-
-#         for i in range(0, len(X_train), batch_size):
-#             idx = perm[i:i+batch_size]
-
-#             xb = torch.from_numpy(X_train[idx]).float().to(device)
-#             yb = torch.from_numpy(y_train[idx]).float().to(device)
-
-#             pred = model(xb)
-
-#             loss = criterion(pred, yb)
-
-#             optimizer.zero_grad()
-#             loss.backward()
-#             optimizer.step()
-
-#         val_mae = eval_model_mae(model, X_val, y_val, config, batch_size=256)
-
-#         print(f"Epoch {epoch+1} | Val MAE: {val_mae:.4f}")
-
-#         if val_mae < best_val:
-#             best_val = val_mae
-#             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-#         # else:
-#         #     patience_counter += 1
-
-#         # if patience_counter >= patience:
-#         #     break
-
-#     model.load_state_dict(best_state)
-#     return model.to(device), best_val
-
 
 def train_tft_da(
     model: nn.Module,
@@ -155,12 +83,10 @@ def train_tft_da(
     y_tgt: np.ndarray,
     X_tgt_val: np.ndarray,
     y_tgt_val: np.ndarray,
-    config: dict,
-    epochs: int = 100,
-    batch_size: int = 256,
-    lr: float = 1e-3,
-    patience: int = 5,
-    device='cuda',
+    epochs: int,
+    batch_size: int,
+    lr: float,
+    device: str,
     use_target_task_loss: bool = False,
 ):
     from torch.utils.data import TensorDataset, DataLoader
@@ -171,8 +97,8 @@ def train_tft_da(
     src_bs = max(1, batch_size // 2)
     tgt_bs = max(1, batch_size // 2)
 
-    src_ds = TensorDataset(torch.from_numpy(X_src).to(config['device']), torch.from_numpy(y_src).to(config['device']))
-    tgt_ds = TensorDataset(torch.from_numpy(X_tgt).to(config['device']), torch.from_numpy(y_tgt).to(config['device']))
+    src_ds = TensorDataset(torch.from_numpy(X_src).to(device), torch.from_numpy(y_src).to(device))
+    tgt_ds = TensorDataset(torch.from_numpy(X_tgt).to(device), torch.from_numpy(y_tgt).to(device))
 
     src_loader = DataLoader(src_ds, batch_size=src_bs, shuffle=True, drop_last=True)
     tgt_loader = DataLoader(tgt_ds, batch_size=tgt_bs, shuffle=True, drop_last=True)
@@ -230,7 +156,7 @@ def train_tft_da(
             tr_dom += dom_loss.item()
 
 
-        val_mae = eval_tft_mae_da(model, X_tgt_val, y_tgt_val, config, batch_size=256)
+        val_mae = eval_tft_mae_da(model, X_tgt_val, y_tgt_val, batch_size, device)
 
         tr_task /= max(1, n_steps)
         tr_dom /= max(1, n_steps)
@@ -240,14 +166,8 @@ def train_tft_da(
         if val_mae < best_mae:
             best_mae = val_mae
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-        #     wait = 0
-        # else:
-        #     wait += 1
-        #     if wait >= patience:
-        #         print(f"Early stopping at epoch {ep+1}")
-        #         break
 
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    return model, best_mae
+    return model.to(device), best_mae

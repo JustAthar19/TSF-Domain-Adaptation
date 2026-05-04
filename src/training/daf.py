@@ -5,6 +5,8 @@ import numpy as np
 from src.models.DAF.grad_reverse import grad_reverse
 from src.evaluation.daf import daf_eval_model_mae
 
+from torch.utils.data import DataLoader, TensorDataset
+
 def train_daf_earlystop_target_mae(
     model: nn.Module,
     discriminator: nn.Module,
@@ -13,10 +15,10 @@ def train_daf_earlystop_target_mae(
     X_tgt: np.ndarray,
     X_tgt_val: np.ndarray,
     y_tgt_val: np.ndarray,
-    config: dict,
-    epochs: int = 100,
-    batch_size: int = 256,
-    lr: float = 1e-3,
+    epochs: int,
+    batch_size: int,
+    lr: float,
+    device: str,
     lambda_recon: float = 0.5,
     lambda_domain: float = 0.1,
 ):
@@ -27,18 +29,16 @@ def train_daf_earlystop_target_mae(
     - Domain adversarial alignment (pattern space)
     - Early stop on target MAE
     """
-
-    from torch.utils.data import DataLoader, TensorDataset
-
-    model = model.to(config["device"]).float()
-    discriminator = discriminator.to(config["device"]).float()
+    
+    model = model.to(device).float()
+    discriminator = discriminator.to(device).float()
 
     src_ds = TensorDataset(
-        torch.from_numpy(X_src).to(config["device"]),
-        torch.from_numpy(y_src).to(config["device"])
+        torch.from_numpy(X_src).to(device),
+        torch.from_numpy(y_src).to(device)
     )
     tgt_ds = TensorDataset(
-        torch.from_numpy(X_tgt).to(config["device"])
+        torch.from_numpy(X_tgt).to(device)
     )
 
     src_loader = DataLoader(src_ds, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -81,10 +81,9 @@ def train_daf_earlystop_target_mae(
             p_tgt_mean = torch.mean(p_tgt, dim=1)
 
             # Labels
-            domain_src = torch.zeros(p_src_mean.size(0), 1).to(config["device"])
-            domain_tgt = torch.ones(p_tgt_mean.size(0), 1).to(config["device"])
+            domain_src = torch.zeros(p_src_mean.size(0), 1).to(device)
+            domain_tgt = torch.ones(p_tgt_mean.size(0), 1).to(device)
 
-            # 🔹 Train discriminator
             d_src = discriminator(p_src_mean.detach())
             d_tgt = discriminator(p_tgt_mean.detach())
 
@@ -94,7 +93,6 @@ def train_daf_earlystop_target_mae(
             loss_disc.backward()
             opt_disc.step()
 
-            # 🔹 Train generator (adversarial)
             p_src_rev = grad_reverse(p_src_mean)
             p_tgt_rev = grad_reverse(p_tgt_mean)
 
@@ -115,7 +113,7 @@ def train_daf_earlystop_target_mae(
 
             total_loss += loss.item()
 
-        val_mae = daf_eval_model_mae(model, X_tgt_val, y_tgt_val, config)
+        val_mae = daf_eval_model_mae(model, X_tgt_val, y_tgt_val, batch_size, device)
 
         print(
             f"Epoch {ep+1}/{epochs} | "
@@ -130,4 +128,4 @@ def train_daf_earlystop_target_mae(
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    return model.to(config["device"]), best_mae
+    return model.to(device), best_mae

@@ -2,7 +2,6 @@
 import numpy as np
 import pandas as pd
 
-from tsf_domain_adaptation import HORIZON
 
 def build_windows_one_location(times, values, input_len, horizon, stride):
     """Build (X, y) windows for one location. values: (T, n_features)."""
@@ -61,33 +60,33 @@ def build_windows_temp_transformer_one_location(times, values, input_len, horizo
     )
 
 
-def stack_for_temperature(z_past, x_cov_past, x_cov_future, config):
-    zeros_temp_future = np.zeros((z_past.shape[0], config['horizon'], 1), dtype=np.float32)
+def stack_for_temperature(z_past, x_cov_past, x_cov_future, horizon):
+    zeros_temp_future = np.zeros((z_past.shape[0], horizon, 1), dtype=np.float32)
     past = np.concatenate([z_past, x_cov_past], axis=-1)
     future = np.concatenate([zeros_temp_future, x_cov_future], axis=-1)
     return np.concatenate([past, future], axis=1)
 
 
-def build_windows(split_df: pd.DataFrame, config: dict):
+def build_windows(split_df: pd.DataFrame, input_len: int, horizon: int, stride: int, feature_cols: list):
     """Build(X, y) for a single split dataframe (across all location_id)"""
     X_list, y_list = [], []
     for _, grp in split_df.groupby("location_id"):
         grp = grp.sort_values("time")
-        mat = grp[config["feature_cols"]].values.astype(np.float32)
+        mat = grp[feature_cols].values.astype(np.float32)
         times = grp['time'].values
-        X, y = build_windows_one_location(times, mat, config["input_len"], config["horizon"], config["stride"])
+        X, y = build_windows_one_location(times, mat, input_len, horizon, stride)
         if X is not None:
             X_list.append(X)
             y_list.append(y)
     if not X_list:
         return (
-            np.zeros((0, config["input_len"], len(config["feature_cols"])), dtype=np.float32),
-            np.zeros((0, config["horizon"]), dtype=np.float32)
+            np.zeros((0, input_len, len(feature_cols)), dtype=np.float32),
+            np.zeros((0, horizon), dtype=np.float32)
         )
     return np.concatenate(X_list, axis=0), np.concatenate(y_list, axis=0)
 
 
-def build_windows_temp_transformer(split_df: pd.DataFrame, config: dict):
+def build_windows_temp_transformer(split_df: pd.DataFrame, feature_cols: list, input_len: int, horizon: 7, stride: int):
     """Build windows for `TemperatureTransformer` across all `location_id`.
 
     Returns:
@@ -98,15 +97,15 @@ def build_windows_temp_transformer(split_df: pd.DataFrame, config: dict):
     """
     z_list, x_cov_past_list, x_cov_future_list, y_list = [], [], [], []
 
-    d_cov = len(config["feature_cols"]) - 1
+    d_cov = len(feature_cols) - 1
 
     for _, grp in split_df.groupby("location_id"):
         grp = grp.sort_values("time")
-        mat = grp[config["feature_cols"]].values.astype(np.float32)
+        mat = grp[feature_cols].values.astype(np.float32)
         times = grp['time'].values
 
         z_past, x_cov_past, x_cov_future, y = build_windows_temp_transformer_one_location(
-            times, mat, config["input_len"], config["horizon"], config["stride"]
+            times, mat, input_len, horizon, stride
         )
 
         if z_past is not None:
@@ -117,10 +116,10 @@ def build_windows_temp_transformer(split_df: pd.DataFrame, config: dict):
 
     if not z_list:
         return (
-            np.zeros((0, config["input_len"], 1), dtype=np.float32),
-            np.zeros((0, config["input_len"], d_cov), dtype=np.float32),
-            np.zeros((0, config["horizon"], d_cov), dtype=np.float32),
-            np.zeros((0, config["horizon"]), dtype=np.float32),
+            np.zeros((0, input_len, 1), dtype=np.float32),
+            np.zeros((0, input_len, d_cov), dtype=np.float32),
+            np.zeros((0, horizon, d_cov), dtype=np.float32),
+            np.zeros((0, horizon), dtype=np.float32),
         )
 
     return (
