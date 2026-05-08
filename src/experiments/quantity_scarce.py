@@ -450,7 +450,7 @@ def run_low_quantity_tgt_experiment(
             "attf mae mean": attf_mae_mean,
             "attf mae std" : attf_mae_std,
             "attf mse mean" : attf_mse_mean,
-            "attf mse std" : attf_mae_std,
+            "attf mse std" : attf_mse_std,
             "attf rmse mean" : attf_rmse_mean,
             "attf rmse std" : attf_rmse_std,
             "daf mae mean" : daf_mae_mean,
@@ -480,9 +480,9 @@ def run_low_quantity_tgt_experiment(
             "tft p wilcoxon mae" : float(p_tft_wilc_mae),
             "tft p wilcoxon mse" : float(p_tft_wilc_mse),
             "tft p wilcoxon rmse" : float(p_tft_wilc_rmse),
-            "tft kmm wilxocon mae" : float(p_tft_kmm_mae),
-            "tft kmm wilxocon mse" : float(p_tft_kmm_mse),
-            "tft kmm wilxocon rmse" : float(p_tft_kmm_rmse),
+            "tft kmm wilcoxon mae" : float(p_tft_kmm_mae),
+            "tft kmm wilcoxon mse" : float(p_tft_kmm_mse),
+            "tft kmm wilcoxon rmse" : float(p_tft_kmm_rmse),
             "tft daf wilcoxon mae" : float(p_tft_daf_mae),
             "tft daf wilcoxon mse" : float(p_tft_daf_mse),
             "tft daf wilxocon rmse" : float(p_tft_daf_rmse)
@@ -501,10 +501,10 @@ def run_low_quantity_tgt_experiment(
             n_target=n,
             rep_idx = rep_idx,
             seed=seed,
-            method=k,
+            method="summary",
             vtt_mae_mean=vtt_mae_mean,
             vtt_mae_std=vtt_mae_std,
-            vtt_mse_mean=vtt_mae_mean,
+            vtt_mse_mean=vtt_mse_mean,
             vtt_mse_std=vtt_mse_std,
             vtt_rmse_mean=vtt_rmse_mean,
             vtt_rmse_std=vtt_rmse_std,
@@ -535,7 +535,7 @@ def run_low_quantity_tgt_experiment(
             tft_da_mae_mean=tft_da_mae_mean,
             tft_da_mae_std=tft_da_mae_std,
             tft_da_mse_mean=tft_da_mse_mean,
-            tft_da_mse_std=tft_da_mae_std,
+            tft_da_mse_std=tft_da_mse_std,
             tft_da_rmse_mean=tft_da_rmse_mean,
             tft_da_rmse_std=tft_da_rmse_std,
             wilcoxon_p_vtt_vtkm_mae=float(p_vtt_vtkm_wilc_mae),
@@ -554,50 +554,72 @@ def run_low_quantity_tgt_experiment(
             wilcoxon_p_tft_daf_mse=float(p_tft_daf_mse),
             wilcoxon_p_tft_daf_rmse=float(p_tft_daf_rmse),
         )
+    # Print summary results for each fraction
     if frac_results:
         methods = [
-            "vu tran transformer",
-            "vu tran kmm",
-            "attf",
-            "daf",
-            "tft non da",
-            "tft da"
+            ("vu tran transformer", "VT-NonDA"),
+            ("vu tran kmm", "VT-KMM"),
+            ("attf", "ATTF"),
+            ("daf", "DAF"),
+            ("tft non da", "TFT-NonDA"),
+            ("tft da", "TFT-DA")
         ]
-        metrics = ["mae", "mse", "rmse"]
-
-        comparisons = [
-            ("TFT vs TFT-DA", "tft p wilcoxon"),
-            ("KMM vs TFT-DA", "tft kmm wilxocon"),
-            ("DAF vs TFT-DA", "tft daf wilcoxon"),
-        ]
-        header = (
-            f"{'IN':>4}  {'%T':>4}  {'n':>5}  "
-        )
-        for name in methods:
-            for m in metrics:
-                header += f"{name+' '+m.upper():>18}  "
+        metrics = [("mae", "MAE"), ("mse", "MSE"), ("rmse", "RMSE")]
         
-        for _, comp_key in comparisons:
-            for m in metrics:
-                header += f"{comp_key+' '+m.upper():>18}  "
-
-        print(header)
-        for frac in frac_results:
+        print("\n" + "="*120)
+        print(f"SUMMARY RESULTS - Input Length: {input_len}, Horizon: {horizon}")
+        print("="*120)
+        
+        for frac in sorted(frac_results.keys()):
             r = frac_results[frac]
-            row = (
-            f"{input_len:>6d}  {int(frac*100):>6d}  {r['n']:>6d}  "
-            )
+            pct = int(frac * 100)
+            n_target = r['n']
+            
+            print(f"\n{'─'*120}")
+            print(f"Target Fraction: {pct}% | N Samples: {n_target}")
+            print(f"{'─'*120}")
+            
+            # Model Results Table
+            print(f"\n{'Method':<18} {'MAE':<20} {'MSE':<20} {'RMSE':<20}")
+            print("-" * 80)
+            for method_key, method_name in methods:
+                mae_mean = r[f"{method_key} mae mean"]
+                mae_std = r[f"{method_key} mae std"]
+                mse_mean = r[f"{method_key} mse mean"]
+                mse_std = r[f"{method_key} mse std"]
+                rmse_mean = r[f"{method_key} rmse mean"]
+                rmse_std = r[f"{method_key} rmse std"]
+                
+                mae_str = f"{mae_mean:.4f}±{mae_std:.4f}"
+                mse_str = f"{mse_mean:.4f}±{mse_std:.4f}"
+                rmse_str = f"{rmse_mean:.4f}±{rmse_std:.4f}"
+                
+                print(f"{method_name:<18} {mae_str:<20} {mse_str:<20} {rmse_str:<20}")
+            
+            # Statistical Comparisons
+            print(f"\n{'Comparison':<30} {'MAE p-value':<15} {'MSE p-value':<15} {'RMSE p-value':<15}")
+            print("-" * 80)
+            
+            comparisons = [
+                ("VT-NonDA vs VT-KMM", "vtt vtkm p wilcoxon"),
+                ("ATTF vs DAF", "attf daf p wilcoxon"),
+                ("TFT-NonDA vs TFT-DA", "tft p wilcoxon"),
+                ("TFT-DA vs VT-KMM", "tft kmm wilxocon"),
+                ("TFT-DA vs DAF", "tft daf wilcoxon"),
+            ]
+            
+            for comp_name, comp_key in comparisons:
+                mae_p = r.get(f"{comp_key} mae", None)
+                mse_p = r.get(f"{comp_key} mse", None)
+                rmse_p = r.get(f"{comp_key} rmse", None)
+                
+                mae_str = fmt_p(mae_p) if mae_p is not None else "   -   "
+                mse_str = fmt_p(mse_p) if mse_p is not None else "   -   "
+                rmse_str = fmt_p(rmse_p) if rmse_p is not None else "   -   "
+                
+                print(f"{comp_name:<30} {mae_str:<15} {mse_str:<15} {rmse_str:<15}")
         
-        for name in methods:
-            for m in metrics:
-                mean = r[f"{name} {m} mean"]
-                std = r[f"{name} {m} std"]
-                row += f"{fmt(mean, std):>18} "
-        
-        for _, comp_key in comparisons:
-            for m in metrics:
-                p_val = f"{comp_key} {m}"
-                row += f"{fmt_p(p_val):>18} "    
+        print(f"\n{'='*120}\n")
     
     return result_rows
 

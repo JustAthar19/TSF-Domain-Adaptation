@@ -60,74 +60,74 @@ def main():
     source_train_df, target_train_df, target_val_df, target_test_df = split_domain(train_df=train, val_df=val, test_df=test, source_domain=source_domain, target_domain=target_domain)
 
 
-    # print("\n" + "=" * 60)
-    # print("Select Station Based on Elevation")
-    # print("=" * 60)
-    # single_id, three_ids, stats_sorted = select_target_stations_papua_by_elevation(target_train_df, target_col)
+    print("\n" + "=" * 60)
+    print("Select Station Based on Elevation")
+    print("=" * 60)
+    single_id, three_ids, stats_sorted = select_target_stations_papua_by_elevation(target_train_df, target_col)
     
-    # print(f"Papua training stations: {len(stats_sorted)}")
-    # print("Selected station IDs (by elevation):")
-    # print(f"  Single-station (median elevation): {single_id}")
-    # if len(three_ids) == 3:
-    #     print(f"  Three-station (low/median/high):   {three_ids[0]}, {three_ids[1]}, {three_ids[2]}")
-    # else:
-    #     print(f"  Three-station (deduped):           {', '.join(three_ids)}")
+    print(f"Papua training stations: {len(stats_sorted)}")
+    print("Selected station IDs (by elevation):")
+    print(f"  Single-station (median elevation): {single_id}")
+    if len(three_ids) == 3:
+        print(f"  Three-station (low/median/high):   {three_ids[0]}, {three_ids[1]}, {three_ids[2]}")
+    else:
+        print(f"  Three-station (deduped):           {', '.join(three_ids)}")
 
     
-    # print("\n" + "=" * 60)
-    # print(" Single Station Target Experiment")
-    # print("=" * 60)
+    print("\n" + "=" * 60)
+    print(" Single Station Target Experiment")
+    print("=" * 60)
 
     results_rows = []
-    # res_single, results_rows = run_target_station_experiment(
-    #     run_ts=run_ts,
-    #     result_rows=results_rows,
-    #     experiment_name="single-station",
-    #     source_train_df=source_train_df,
-    #     target_train_df=target_train_df,
-    #     target_val_df=target_val_df,
-    #     target_test_df=target_test_df,
-    #     target_station_ids=[single_id],
-    #     input_len=input_len,
-    #     horizon=horizon,
-    #     stride=stride,
-    #     feature_cols=feature_cols,
-    #     target_col=target_col,
-    #     epochs=epochs,
-    #     lr=lr,
-    #     batch_size=batch_size,
-    #     device=device
-    # )
+    res_single, results_rows = run_target_station_experiment(
+        run_ts=run_ts,
+        result_rows=results_rows,
+        experiment_name="single-station",
+        source_train_df=source_train_df,
+        target_train_df=target_train_df,
+        target_val_df=target_val_df,
+        target_test_df=target_test_df,
+        target_station_ids=[single_id],
+        input_len=input_len,
+        horizon=horizon,
+        stride=stride,
+        feature_cols=feature_cols,
+        target_col=target_col,
+        epochs=epochs,
+        lr=lr,
+        batch_size=batch_size,
+        device=device
+    )
 
     
-    # print("\n" + "=" * 60)
-    # print(" Three Station Target Experiment")
-    # print("=" * 60)
-    # res_three, results_rows = run_target_station_experiment(
-    #     run_ts=run_ts,
-    #     result_rows=results_rows,
-    #     experiment_name="three-station",
-    #     source_train_df=source_train_df,
-    #     target_train_df=target_train_df,
-    #     target_val_df=target_val_df,
-    #     target_test_df=target_test_df,
-    #     target_station_ids=three_ids,
-    #     input_len=input_len,
-    #     horizon=horizon,
-    #     stride=stride,
-    #     feature_cols=feature_cols,
-    #     target_col=target_col,
-    #     epochs=epochs,
-    #     lr=lr,
-    #     batch_size=batch_size,
-    #     device=device
-    # )
+    print("\n" + "=" * 60)
+    print(" Three Station Target Experiment")
+    print("=" * 60)
+    res_three, results_rows = run_target_station_experiment(
+        run_ts=run_ts,
+        result_rows=results_rows,
+        experiment_name="three-station",
+        source_train_df=source_train_df,
+        target_train_df=target_train_df,
+        target_val_df=target_val_df,
+        target_test_df=target_test_df,
+        target_station_ids=three_ids,
+        input_len=input_len,
+        horizon=horizon,
+        stride=stride,
+        feature_cols=feature_cols,
+        target_col=target_col,
+        epochs=epochs,
+        lr=lr,
+        batch_size=batch_size,
+        device=device
+    )
 
-    # print_summary_table(res_single, res_three)
+    print_summary_table(res_single, res_three)
 
-    # print("")
-    # training_end_time = convert_seconds((datetime.now() - training_start_time).total_seconds())
-    # print(f"Spatial Scarcity Took: {training_end_time}")
+    print("")
+    training_end_time = convert_seconds((datetime.now() - training_start_time).total_seconds())
+    print(f"Spatial Scarcity Took: {training_end_time}")
 
     print(60*"=")
     print("Data Quantity Scarcity Experiment")

@@ -1,2 +1,6 @@
+.cache.sqlite
 __pycache__/
 *.py[cod]
+*py[oc]
+.pycache/
+build/

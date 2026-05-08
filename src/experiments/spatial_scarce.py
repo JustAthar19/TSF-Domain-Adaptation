@@ -79,7 +79,7 @@ def run_target_station_experiment(
 
     # Load Data
     X_src, y_src = build_windows(split_df=source_train_df, input_len=input_len, horizon=horizon, stride=stride, feature_cols=feature_cols)
-    X_tgt, y_tgt = build_windows(split_df=target_train_df,input_len=input_len, horizon=horizon, stride=stride, feature_cols=feature_cols)
+    X_tgt, y_tgt = build_windows(split_df=target_train_sel,input_len=input_len, horizon=horizon, stride=stride, feature_cols=feature_cols)
     X_tgt_val, y_tgt_val = build_windows(target_val_df, input_len=input_len, horizon=horizon, stride=stride, feature_cols=feature_cols)  # FULL Papua val
     X_tgt_test, y_tgt_test = build_windows(target_test_df, input_len=input_len, horizon=horizon, stride=stride, feature_cols=feature_cols)  # FULL Papua test
     
@@ -169,9 +169,9 @@ def run_target_station_experiment(
     print("Finding Beta Value")
     
     beta_start_time = datetime.now()
-    beta = np.load('notebook/beta_weights.npy')
+    # beta = np.load('notebook/beta_weights.npy')
     print(f"Starts Finding Beta At: {beta_start_time.strftime('%H:%M:%S')}")
-    # beta = kmm_weights(X_src_flat[idx_s], X_tgt_flat[idx_t], B=2.0, eps=0.1)
+    beta = kmm_weights(X_src_flat[idx_s], X_tgt_flat[idx_t], B=2.0, eps=0.1)
     beta_end_time = datetime.now()
     print(f"Finishing Finding Beta At: {beta_end_time.strftime('%H:%M:%S')}")
     beta_total_time = convert_seconds((beta_end_time - beta_start_time).total_seconds())

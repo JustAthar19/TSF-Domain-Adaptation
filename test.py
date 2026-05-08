@@ -27,25 +27,12 @@ from scipy.stats import wilcoxon
 
 # print("=" * 30 + " ARIMA "+ "=" * 30)
 
-group1 = [20, 23, 21, 25, 18, 17, 18, 24, 20, 24, 23, 19]
-group2 = [24, 25, 21, 22, 23, 18, 17, 28, 24, 27, 21, 23]
+# group1 = [20, 23, 21, 25, 18, 17, 18, 24, 20, 24, 23, 19]
+# group2 = [24, 25, 21, 22, 23, 18, 17, 28, 24, 27, 21, 23]
 
-wilcox = wilcoxon(group1, group2)
-print(wilcox)
+# wilcox = wilcoxon(group1, group2)
+# print(wilcox)
 
 
 # train_config = load_config("configs/train.yaml")
 # print(train_config['low_resources_fracs'])
-
-
-header = (
-        f"{'INPUT_LEN':>10}  {'%Target':>8}  {'nTarget':>8}  "
-        f"{'ATTF MAE':>18}  {'ATTF MSE':>18}  {'ATTF RMSE':>18}  "
-        f"{'DAF MAE':>18}  {'DAF MSE':>18}  {'DAF RMSE':>18}  "
-        f"{'p_mae':>10}  {'p_mse':>10}  {'p_rmse':>10}"
-    )
-
-row = (
-    f"18.3383"
-)
-print(header)
