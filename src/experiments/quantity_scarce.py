@@ -417,20 +417,21 @@ def run_low_quantity_tgt_experiment(
 
         ### TFT DA & KMM || TFT DA & DAF
         p_tft_kmm_mae, p_tft_kmm_mse, p_tft_kmm_rmse = wilcoxon_signed_rank(
-            method1_mae=tft_da_mae_runs,
-            method2_mae=vu_tran_kmm_mae_runs,
-            method1_mse=tft_da_mse_runs,
-            method2_mse=vu_tran_kmm_mse_runs,
-            method1_rmse=tft_da_rmse_runs,
-            method2_rmse=vu_tran_kmm_rmse_runs
+            method1_mae=vu_tran_kmm_mae_runs,
+            method2_mae=tft_da_mae_runs,
+            method1_mse=vu_tran_kmm_mse_runs,
+            method2_mse=tft_da_mse_runs,
+            method1_rmse=vu_tran_kmm_rmse_runs,
+            method2_rmse=tft_da_rmse_runs
         )
+        
         p_tft_daf_mae, p_tft_daf_mse, p_tft_daf_rmse = wilcoxon_signed_rank(
-            method1_mae=tft_da_mae_runs,
-            method2_mae=daf_mae_runs,
-            method1_mse=tft_da_mse_runs,
-            method2_mse=daf_mse_runs,
-            method1_rmse=tft_da_rmse_runs,
-            method2_rmse=daf_rmse_runs
+            method1_mae=daf_mae_runs,
+            method2_mae=tft_da_mae_runs,
+            method1_mse=daf_mse_runs,
+            method2_mse=tft_da_mse_runs,
+            method1_rmse=daf_rmse_runs, 
+            method2_rmse=tft_da_rmse_runs
         )
 
         frac_results[frac] = {
