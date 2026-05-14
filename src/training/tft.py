@@ -87,7 +87,7 @@ def train_tft_da(
     batch_size: int,
     lr: float,
     device: str,
-    use_target_task_loss: bool = False,
+    use_target_task_loss: bool = True,
 ):
     from torch.utils.data import TensorDataset, DataLoader
 
