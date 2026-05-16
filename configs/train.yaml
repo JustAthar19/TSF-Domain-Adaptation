@@ -1,6 +1,6 @@
 epochs: 100
 batch_size: 256
-lr: 1e-3
+lr: 0.001
 
 n_repeats: 10
 
@@ -8,6 +8,15 @@ low_resources_fracs:
   - 0.05
   - 0.15
   - 0.25
+
+methods:
+  - arima
+  - vtt
+  - vtkm
+  - attf
+  - daf 
+  - tft non da
+  - tft da
 
 device: cuda
 

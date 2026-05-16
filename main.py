@@ -43,6 +43,8 @@ def main():
     batch_size = train_config['batch_size']
     lr = train_config['lr']
 
+    methods = train_config['methods']
+
 
     n_repeats = train_config['n_repeats']
     low_resource_fracs = train_config['low_resources_fracs']
@@ -80,6 +82,7 @@ def main():
 
     results_rows = []
     res_single, results_rows = run_target_station_experiment(
+        methods=methods,
         run_ts=run_ts,
         result_rows=results_rows,
         experiment_name="single-station",
@@ -104,6 +107,7 @@ def main():
     print(" Three Station Target Experiment")
     print("=" * 60)
     res_three, results_rows = run_target_station_experiment(
+        methods=methods,
         run_ts=run_ts,
         result_rows=results_rows,
         experiment_name="three-station",
