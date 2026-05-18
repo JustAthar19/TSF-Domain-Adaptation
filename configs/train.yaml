@@ -15,7 +15,7 @@ methods:
   - vtkm
   - attf
   - daf 
-  - tft non da
+  - tft
   - tft da
 
 device: cuda

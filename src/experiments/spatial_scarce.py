@@ -73,7 +73,7 @@ def run_target_station_experiment(
     print("\n" + "=" * 60)
     print(f"{experiment_name}")
     print("=" * 60)
-    print(f"Selected Papua target stations (train only): {', '.join([str(x) for x in target_station_ids])}")
+    print(f"Selected target stations (train only): {', '.join([str(x) for x in target_station_ids])}")
     
     target_train_sel = filter_df_by_station_ids(target_train_df, target_station_ids)
     target_test_sel = filter_df_by_station_ids(target_test_df, target_station_ids)
@@ -93,9 +93,6 @@ def run_target_station_experiment(
     rs_t = np.random.RandomState(43)
     idx_s = rs_s.choice(X_src_flat.shape[0], subsample_src, replace=False)
     idx_t = rs_t.choice(X_tgt_flat.shape[0], subsample_tgt, replace=False)
-
-    print(f"X_tgt.shape = {X_tgt.shape}")
-
     
     z_src_kmm, x_cov_past_src_kmm, x_cov_future_src_kmm, y_src_kmm = build_windows_temp_transformer(split_df=source_train_df, feature_cols=feature_cols, input_len=input_len, horizon=horizon, stride=stride)
     z_tgt_kmm, x_cov_past_tgt_kmm, x_cov_future_tgt_kmm, y_tgt_kmm = build_windows_temp_transformer(split_df=target_train_sel, feature_cols=feature_cols, input_len=input_len, horizon=horizon, stride=stride)
@@ -107,10 +104,10 @@ def run_target_station_experiment(
     X_tgt_val_stack = stack_for_temperature(z_tgt_val_kmm, x_cov_past_tgt_val_kmm, x_cov_future_tgt_val_kmm, horizon)
     X_tgt_test_stack = stack_for_temperature(z_tgt_test_kmm, x_cov_past_tgt_test_kmm, x_cov_future_tgt_test_kmm, horizon)
 
-    print(f"Java train windows:         {X_src.shape[0]}")
-    print(f"Papua train windows (sel):  {X_tgt.shape[0]}")
-    print(f"Papua val windows (FULL):   {X_tgt_val.shape[0]}")
-    print(f"Papua test windows (FULL):  {X_tgt_test.shape[0]}")
+    print(f"Source train windows:        {X_src.shape[0]}")
+    print(f"Target train windows (sel):  {X_tgt.shape[0]}")
+    print(f"Target val windows (FULL):   {X_tgt_val.shape[0]}")
+    print(f"Target test windows (FULL):  {X_tgt_test.shape[0]}")
 
 
     arima_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")} 
@@ -274,15 +271,17 @@ def run_target_station_experiment(
             f"\nMAE: {daf_metrics['mae']:.6f}  MSE: {daf_metrics['mse']:.6f}  RMSE: {daf_metrics['rmse']:.4f}"
         )
 
-    if 'tft' in methods:    
-        print("\n" + "-" * 60)
-        print("F) TFT [Non Domain Adaptation]")
-        print("-" * 60)
-        
+    # Reshape data for TFT models (needed for both TFT and TFT DA)
+    if 'tft' in methods or 'tft da' in methods:
         X_src = X_src.reshape(X_src.shape[0], X_src.shape[1], 9, 1)
         X_tgt = X_tgt.reshape(X_tgt.shape[0], X_tgt.shape[1], 9, 1)
         X_tgt_val = X_tgt_val.reshape(X_tgt_val.shape[0], X_tgt_val.shape[1], 9, 1)
         X_tgt_test = X_tgt_test.reshape(X_tgt_test.shape[0], X_tgt_test.shape[1], 9, 1)
+
+    if 'tft' in methods:    
+        print("\n" + "-" * 60)
+        print("F) TFT [Non Domain Adaptation]")
+        print("-" * 60)
 
     
         tft_model = TFT_Target_Model(
