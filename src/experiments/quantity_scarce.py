@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 import pandas as pd
 import numpy as np
@@ -27,6 +28,7 @@ from src.evaluation.tft import tft_eval_model_metrics_non_da, tft_eval_model_met
 
 from src.utils.io import log_row
 from src.utils.time import convert_seconds
+from src.training.one_step_pipeline import run_one_step_finetuning
 
 from src.utils.wilcoxon import wilcoxon_signed_rank
 
@@ -59,7 +61,8 @@ def run_low_quantity_tgt_experiment(
         epochs: int,
         batch_size: int, 
         lr: float,
-        device: str
+        device: str,
+        osft_config: Optional[dict] = None,
 ):
     X_src_lr, y_src_lr = build_windows(source_train_df, input_len, horizon, stride, feature_cols)
     X_tgt_full, y_tgt_full = build_windows(target_train_df, input_len, horizon, stride, feature_cols)
@@ -87,6 +90,7 @@ def run_low_quantity_tgt_experiment(
         daf_mae_runs, daf_mse_runs, daf_rmse_runs = [], [], []
         tft_non_da_mae_runs, tft_non_da_mse_runs, tft_non_da_rmse_runs = [], [], []
         tft_da_mae_runs, tft_da_mse_runs, tft_da_rmse_runs = [], [], []
+        osft_mae_runs, osft_mse_runs, osft_rmse_runs = [], [], []
 
         for rep_idx in range(n_repeats):
             seed = int(rs_base.randint(0, 2**31-1))
@@ -310,7 +314,48 @@ def run_low_quantity_tgt_experiment(
             tft_da_mae_runs.append(tft_da_lr_metrics['mae'])
             tft_da_mse_runs.append(tft_da_lr_metrics['mse'])
             tft_da_rmse_runs.append(tft_da_lr_metrics['rmse'])
-    
+
+            # -------------------------------
+            # One-Step Fine-Tuning (Domain Adaptation)
+            # -------------------------------
+            print("\n" + "-" * 60)
+            print("One-Step Fine-Tuning [Domain Adaptation]")
+            print("-" * 60)
+            osft_cfg = osft_config or {}
+            n_rows = max(1, int(round(frac * len(target_train_df))))
+            idx_rows = rs.choice(len(target_train_df), min(n_rows, len(target_train_df)), replace=False)
+            target_train_small_df = target_train_df.iloc[idx_rows].reset_index(drop=True)
+
+            osft_lr_metrics, _ = run_one_step_finetuning(
+                source_train_df=source_train_df,
+                target_train_df=target_train_small_df,
+                target_val_df=target_val_df,
+                target_test_df=target_test_df,
+                feature_cols=feature_cols,
+                target_col=target_col,
+                input_len=input_len,
+                horizon=horizon,
+                stride=stride,
+                device=device,
+                batch_size=osft_cfg.get("batch_size", batch_size),
+                epochs_pretrain=osft_cfg.get("epochs_pretrain", 50),
+                epochs_finetune=osft_cfg.get("epochs_finetune", epochs),
+                lr_pretrain=osft_cfg.get("lr_pretrain", lr),
+                lr_finetune=osft_cfg.get("lr_finetune", lr * 0.5),
+                patience=osft_cfg.get("patience", 10),
+                mmd_threshold=osft_cfg.get("mmd_threshold", 0.11),
+                mmd_subsample=osft_cfg.get("mmd_subsample", 3000),
+                d_model=osft_cfg.get("d_model", 64),
+                n_heads=osft_cfg.get("n_heads", 4),
+                n_encoder_layers=osft_cfg.get("n_encoder_layers", 3),
+                d_ff=osft_cfg.get("d_ff", 256),
+                dropout=osft_cfg.get("dropout", 0.1),
+                mix_seed=seed,
+                region_name=f"low-resource-{frac}",
+            )
+            osft_mae_runs.append(osft_lr_metrics['mae'])
+            osft_mse_runs.append(osft_lr_metrics['mse'])
+            osft_rmse_runs.append(osft_lr_metrics['rmse'])
 
             rep_out = {
                 "vu tran transformer": vu_tran_non_kmm_lr_metrics,
@@ -318,7 +363,8 @@ def run_low_quantity_tgt_experiment(
                 "attf": attf_lr_metrics,
                 "daf": daf_lr_metrics,
                 'tft non da': tft_lr_metrics,
-                'tft da': tft_da_lr_metrics
+                'tft da': tft_da_lr_metrics,
+                'one step ft': osft_lr_metrics,
             }
 
             print(f"Results for iterations no: {rep_idx + 1} & fractions: {frac}")
@@ -385,8 +431,15 @@ def run_low_quantity_tgt_experiment(
         tft_da_mae_mean, tft_da_mae_std = float(np.mean(tft_da_mae_runs)), float(np.std(tft_da_mae_runs, ddof=1))
         tft_da_mse_mean, tft_da_mse_std = float(np.mean(tft_da_mse_runs)), float(np.std(tft_da_mse_runs, ddof=1))
         tft_da_rmse_mean, tft_da_rmse_std = float(np.mean(tft_da_rmse_runs)), float(np.std(tft_da_rmse_runs, ddof=1))
+        # one step fine-tuning
+        osft_mae_runs = np.array(osft_mae_runs, dtype=np.float64)
+        osft_mse_runs = np.array(osft_mse_runs, dtype=np.float64)
+        osft_rmse_runs = np.array(osft_rmse_runs, dtype=np.float64)
+        osft_mae_mean, osft_mae_std = float(np.mean(osft_mae_runs)), float(np.std(osft_mae_runs, ddof=1))
+        osft_mse_mean, osft_mse_std = float(np.mean(osft_mse_runs)), float(np.std(osft_mse_runs, ddof=1))
+        osft_rmse_mean, osft_rmse_std = float(np.mean(osft_rmse_runs)), float(np.std(osft_rmse_runs, ddof=1))
          
-        
+         
         ### Non DA & DA Wilcoxon
         p_vtt_vtkm_wilc_mae, p_vtt_vtkm_wilc_mse, p_vtt_vtkm_wilc_rmse = wilcoxon_signed_rank(
             method1_mae=vu_tran_transformer_mae_runs, 
@@ -472,6 +525,12 @@ def run_low_quantity_tgt_experiment(
             "tft da mse std" : tft_da_mse_std,
             "tft da rmse mean": tft_da_rmse_mean,
             "tft da rmse std" : tft_da_rmse_std,
+            "one step ft mae mean": osft_mae_mean,
+            "one step ft mae std": osft_mae_std,
+            "one step ft mse mean": osft_mse_mean,
+            "one step ft mse std": osft_mse_std,
+            "one step ft rmse mean": osft_rmse_mean,
+            "one step ft rmse std": osft_rmse_std,
             "vtt vtkm p wilcoxon mae" : float(p_vtt_vtkm_wilc_mae),
             "vtt vtkm p wilcoxon mse" : float(p_vtt_vtkm_wilc_mse),
             "vtt vtkm p wilcoxon rmse" : float(p_vtt_vtkm_wilc_rmse),
@@ -539,6 +598,12 @@ def run_low_quantity_tgt_experiment(
             tft_da_mse_std=tft_da_mse_std,
             tft_da_rmse_mean=tft_da_rmse_mean,
             tft_da_rmse_std=tft_da_rmse_std,
+            osft_mae_mean=osft_mae_mean,
+            osft_mae_std=osft_mae_std,
+            osft_mse_mean=osft_mse_mean,
+            osft_mse_std=osft_mse_std,
+            osft_rmse_mean=osft_rmse_mean,
+            osft_rmse_std=osft_rmse_std,
             wilcoxon_p_vtt_vtkm_mae=float(p_vtt_vtkm_wilc_mae),
             wilcoxon_p_vtt_vtkm_mse=float(p_vtt_vtkm_wilc_mse),
             wilcoxon_p_vtt_vtkm_rmse=float(p_vtt_vtkm_wilc_rmse),
@@ -563,7 +628,8 @@ def run_low_quantity_tgt_experiment(
             ("attf", "ATTF"),
             ("daf", "DAF"),
             ("tft non da", "TFT-NonDA"),
-            ("tft da", "TFT-DA")
+            ("tft da", "TFT-DA"),
+            ("one step ft", "OSFT"),
         ]
         metrics = [("mae", "MAE"), ("mse", "MSE"), ("rmse", "RMSE")]
         

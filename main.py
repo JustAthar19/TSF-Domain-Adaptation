@@ -44,7 +44,7 @@ def main():
     lr = train_config['lr']
 
     methods = train_config['methods']
-
+    osft_config = train_config.get('osft', {})
 
     n_repeats = train_config['n_repeats']
     low_resource_fracs = train_config['low_resources_fracs']
@@ -99,7 +99,8 @@ def main():
         epochs=epochs,
         lr=lr,
         batch_size=batch_size,
-        device=device
+        device=device,
+        osft_config=osft_config,
     )
 
     
@@ -124,7 +125,8 @@ def main():
         epochs=epochs,
         lr=lr,
         batch_size=batch_size,
-        device=device
+        device=device,
+        osft_config=osft_config,
     )
 
     print_summary_table(res_single, res_three)
@@ -154,7 +156,8 @@ def main():
         epochs=epochs,
         batch_size=batch_size,
         lr=lr,
-        device=device
+        device=device,
+        osft_config=osft_config,
     )
 
     training_end_time = convert_seconds((datetime.now() - training_start_time).total_seconds())

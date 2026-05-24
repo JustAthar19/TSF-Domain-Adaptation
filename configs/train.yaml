@@ -10,6 +10,7 @@ low_resources_fracs:
   - 0.25
 
 methods:
+<<<<<<< HEAD
   - arima
   - vtt
   - vtkm
@@ -17,6 +18,30 @@ methods:
   - daf 
   - tft
   - tft da
+=======
+  # - arima
+  # - vtt
+  # - vtkm
+  # - attf
+  # - daf 
+  # - tft non da
+  # - tft da
+  - osft
+
+osft:
+  epochs_pretrain: 50
+  epochs_finetune: 35
+  lr_pretrain: 0.001
+  lr_finetune: 0.0005
+  patience: 10
+  mmd_threshold: 0.11
+  mmd_subsample: 3000
+  d_model: 64
+  n_heads: 4
+  n_encoder_layers: 3
+  d_ff: 256
+  dropout: 0.1
+>>>>>>> feb0073 (Add: Domain Adaptation one-step fine-tuning)
 
 device: cuda
 

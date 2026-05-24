@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn as nn
 
 from datetime import datetime
+from typing import Optional
 
 from src.data.stations import filter_df_by_station_ids
 from src.data.windowing import stack_for_temperature, build_windows, build_windows_temp_transformer
@@ -35,6 +36,7 @@ from src.evaluation.tft import  tft_eval_model_metrics_non_da, tft_eval_model_me
 
 from src.utils.io import log_row
 from src.utils.time import convert_seconds
+from src.training.one_step_pipeline import run_one_step_finetuning
 
 
 def run_target_station_experiment(
@@ -55,7 +57,8 @@ def run_target_station_experiment(
     epochs: int,
     lr: float,
     batch_size: int,
-    device: str
+    device: str,
+    osft_config: Optional[dict] = None,
 ):
     """
     Train multiple models for a given target-station subset and evaluate on FULL Papua test set:
@@ -104,10 +107,18 @@ def run_target_station_experiment(
     X_tgt_val_stack = stack_for_temperature(z_tgt_val_kmm, x_cov_past_tgt_val_kmm, x_cov_future_tgt_val_kmm, horizon)
     X_tgt_test_stack = stack_for_temperature(z_tgt_test_kmm, x_cov_past_tgt_test_kmm, x_cov_future_tgt_test_kmm, horizon)
 
+<<<<<<< HEAD
     print(f"Source train windows:        {X_src.shape[0]}")
     print(f"Target train windows (sel):  {X_tgt.shape[0]}")
     print(f"Target val windows (FULL):   {X_tgt_val.shape[0]}")
     print(f"Target test windows (FULL):  {X_tgt_test.shape[0]}")
+=======
+    print(f"X_src.shape = {X_src.shape}")
+    print(f"Java train windows:         {X_src.shape[0]}")
+    print(f"Papua train windows (sel):  {X_tgt.shape[0]}")
+    print(f"Papua val windows (FULL):   {X_tgt_val.shape[0]}")
+    print(f"Papua test windows (FULL):  {X_tgt_test.shape[0]}")
+>>>>>>> feb0073 (Add: Domain Adaptation one-step fine-tuning)
 
 
     arima_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")} 
@@ -116,7 +127,8 @@ def run_target_station_experiment(
     attf_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")} 
     daf_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")} 
     tft_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")} 
-    tft_da_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")} 
+    tft_da_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")}
+    osft_metrics = {"mae": float("nan"), "mse": float("nan"), "rmse": float("nan")}
     # -----------------------------
     # A) ARIMA: Non-DA
     # -----------------------------
@@ -341,6 +353,43 @@ def run_target_station_experiment(
             f"\nMAE: {tft_da_metrics['mae']:.6f}  MSE: {tft_da_metrics['mse']:.6f}  RMSE: {tft_da_metrics['rmse']:.4f}"
         )
 
+    if 'osft' in methods:
+        print("\n" + "-" * 60)
+        print("H) One-Step Fine-Tuning [Domain Adaptation]")
+        print("-" * 60)
+        osft_cfg = osft_config or {}
+        osft_metrics, osft_meta = run_one_step_finetuning(
+            source_train_df=source_train_df,
+            target_train_df=target_train_sel,
+            target_val_df=target_val_df,
+            target_test_df=target_test_df,
+            feature_cols=feature_cols,
+            target_col=target_col,
+            input_len=input_len,
+            horizon=horizon,
+            stride=stride,
+            device=device,
+            batch_size=osft_cfg.get("batch_size", batch_size),
+            epochs_pretrain=osft_cfg.get("epochs_pretrain", 50),
+            epochs_finetune=osft_cfg.get("epochs_finetune", epochs),
+            lr_pretrain=osft_cfg.get("lr_pretrain", lr),
+            lr_finetune=osft_cfg.get("lr_finetune", lr * 0.5),
+            patience=osft_cfg.get("patience", 10),
+            mmd_threshold=osft_cfg.get("mmd_threshold", 0.11),
+            mmd_subsample=osft_cfg.get("mmd_subsample", 3000),
+            d_model=osft_cfg.get("d_model", 64),
+            n_heads=osft_cfg.get("n_heads", 4),
+            n_encoder_layers=osft_cfg.get("n_encoder_layers", 3),
+            d_ff=osft_cfg.get("d_ff", 256),
+            dropout=osft_cfg.get("dropout", 0.1),
+            region_name=experiment_name,
+        )
+        print(
+            f"\n================= One-Step FT ================="
+            f"\nMMD={osft_meta['mmd']:.4f}  mix={osft_meta['mix_pct'] * 100:.0f}%"
+            f"\nMAE: {osft_metrics['mae']:.6f}  MSE: {osft_metrics['mse']:.6f}  RMSE: {osft_metrics['rmse']:.4f}"
+        )
+
     out = {
         "arima" : arima_metrics,
         "vu tran transformer": vu_tran_non_kmm_metrics,
@@ -348,7 +397,8 @@ def run_target_station_experiment(
         "attf": attf_metrics,
         "daf": daf_metrics,
         'tft non da': tft_metrics,
-        'tft da': tft_da_metrics
+        'tft da': tft_da_metrics,
+        'one step ft': osft_metrics,
     }
 
     print("\n" + "-" * 60)
